@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>De Knal Style Plywood Configurator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+    >
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css">
+    <script
+      type="module"
+      src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"
+    ></script>
+  </head>
+  <body>
+    <main class="page">
+      <section
+        class="panel"
+        id="controls-drawer"
+        aria-label="Configurator controls"
+        aria-hidden="true"
+      >
+        <div class="panel__mobile-header">
+          <p class="panel__mobile-eyebrow">Configurator</p>
+          <button
+            id="close-controls-button"
+            class="panel__close-button"
+            type="button"
+            aria-label="Close controls"
+          >
+            Close
+          </button>
+        </div>
+
+        <form id="panel-form" class="form" novalidate>
+          <section class="accordion-step" data-step="1" data-expanded="true">
+            <button class="accordion-step__header" id="step-button-1" type="button" aria-expanded="true" aria-controls="step-panel-1">
+              <span class="accordion-step__meta">Step 1 of 6</span>
+              <span class="accordion-step__title">Material</span>
+              <span class="accordion-step__description">Choose the sheet material before configuring the plate dimensions.</span>
+            </button>
+
+            <div class="accordion-step__panel" id="step-panel-1" role="region" aria-labelledby="step-button-1">
+              <div class="field-grid">
+                <label class="field" for="material-variant-selector">
+                  <span>Material</span>
+                </label>
+                <div id="material-variant-selector" class="material-selector" role="radiogroup" aria-label="Birch multiplex variant">
+                  <button
+                    class="material-card"
+                    type="button"
+                    data-variant-key="multiplex-b-bb"
+                    data-variant-label="Multiplex B/BB"
+                    data-selected="true"
+                    aria-pressed="true"
+                  >
+                    <img class="material-card__image" src="./multiplex-berken_multiplex_b_bb-topshot.jpg" alt="Multiplex B/BB">
+                    <span class="material-card__title">Multiplex B/BB</span>
+                  </button>
+                  <button
+                    class="material-card"
+                    type="button"
+                    data-variant-key="multiplex-cp-cp"
+                    data-variant-label="Multiplex CP/CP"
+                    data-selected="false"
+                    aria-pressed="false"
+                  >
+                    <img class="material-card__image" src="./multiplex-berken_multiplex_cp_cp-topshot.jpg" alt="Multiplex CP/CP">
+                    <span class="material-card__title">Multiplex CP/CP</span>
+                  </button>
+                </div>
+                <input id="material-key" name="materialKey" type="hidden" value="birch-multiplex">
+                <input id="material-variant-key" name="materialVariantKey" type="hidden" value="multiplex-b-bb">
+                <input id="material-variant-label" name="materialVariantLabel" type="hidden" value="Multiplex B/BB">
+              </div>
+            </div>
+          </section>
+
+          <section class="accordion-step" data-step="2" data-expanded="false">
+            <button class="accordion-step__header" id="step-button-2" type="button" aria-expanded="false" aria-controls="step-panel-2">
+              <span class="accordion-step__meta">Step 2 of 6</span>
+              <span class="accordion-step__title">Size</span>
+            </button>
+
+            <div class="accordion-step__panel" id="step-panel-2" role="region" aria-labelledby="step-button-2" hidden>
+              <div class="field-grid field-grid--three">
+                <label class="field">
+                  <span>Length (mm)</span>
+                  <input id="length-mm" name="lengthMm" type="number" min="1" max="2400" step="1" value="1000" required>
+                </label>
+
+                <label class="field">
+                  <span>Width (mm)</span>
+                  <input id="width-mm" name="widthMm" type="number" min="1" max="1200" step="1" value="500" required>
+                </label>
+
+                <label class="field">
+                  <span>Thickness (mm)</span>
+                  <select id="thickness-mm" name="thicknessMm">
+                    <option value="6">6 mm</option>
+                    <option value="9">9 mm</option>
+                    <option value="12">12 mm</option>
+                    <option value="15">15 mm</option>
+                    <option value="18" selected>18 mm</option>
+                    <option value="21">21 mm</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>Quantity</span>
+                  <input id="quantity" name="quantity" type="number" min="1" step="1" value="1" required>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="accordion-step" data-step="3" data-expanded="false">
+            <button class="accordion-step__header" id="step-button-3" type="button" aria-expanded="false" aria-controls="step-panel-3">
+              <span class="accordion-step__meta">Step 3 of 6</span>
+              <span class="accordion-step__title">Corner treatment</span>
+            </button>
+
+            <div class="accordion-step__panel" id="step-panel-3" role="region" aria-labelledby="step-button-3" hidden>
+              <div class="choice-selector" role="radiogroup" aria-label="Corner treatment">
+                <button
+                  class="choice-card"
+                  id="corner-choice-square"
+                  type="button"
+                  data-choice-group="corners"
+                  data-choice-value="false"
+                  data-selected="true"
+                  aria-pressed="true"
+                >
+                  <span class="choice-card__title">Square corners</span>
+                  <span class="choice-card__description">Keep the plate with clean 90 degree corners.</span>
+                </button>
+                <button
+                  class="choice-card"
+                  id="corner-choice-rounded"
+                  type="button"
+                  data-choice-group="corners"
+                  data-choice-value="true"
+                  data-selected="false"
+                  aria-pressed="false"
+                >
+                  <span class="choice-card__title">Rounded corners</span>
+                  <span class="choice-card__description">Enable a radius and soften each corner.</span>
+                </button>
+              </div>
+
+              <input id="rounded-corners" name="roundedCorners" type="checkbox" hidden>
+
+              <div class="settings-panel" id="corner-radius-panel" hidden>
+                <label class="field" id="corner-radius-field">
+                  <span>Corner radius (mm)</span>
+                  <input
+                    id="corner-radius-mm"
+                    name="cornerRadiusMm"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value="25"
+                    disabled
+                  >
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section class="accordion-step" data-step="4" data-expanded="false">
+            <button class="accordion-step__header" id="step-button-4" type="button" aria-expanded="false" aria-controls="step-panel-4">
+              <span class="accordion-step__meta">Step 4 of 6</span>
+                <span class="accordion-step__title">Holes</span>
+            </button>
+
+            <div class="accordion-step__panel" id="step-panel-4" role="region" aria-labelledby="step-button-4" hidden>
+              <div class="choice-selector" role="radiogroup" aria-label="Hole options">
+                <button
+                  class="choice-card"
+                  id="hole-choice-none"
+                  type="button"
+                  data-choice-group="holes"
+                  data-choice-value="false"
+                  data-selected="true"
+                  aria-pressed="true"
+                >
+                  <span class="choice-card__title">No holes</span>
+                  <span class="choice-card__description">Keep the plate surface uninterrupted.</span>
+                </button>
+                <button
+                  class="choice-card"
+                  id="hole-choice-add"
+                  type="button"
+                  data-choice-group="holes"
+                  data-choice-value="true"
+                  data-selected="false"
+                  aria-pressed="false"
+                >
+                  <span class="choice-card__title">Add holes</span>
+                  <span class="choice-card__description">Place one or more holes with custom offsets and sizing.</span>
+                </button>
+              </div>
+
+              <input id="hole-enabled" name="holeEnabled" type="checkbox" hidden>
+
+              <div class="settings-panel" id="hole-settings-panel" hidden>
+                <div class="subgroup">
+                    <p class="subgroup__title">Position</p>
+                  <div class="field-group field-grid field-grid--two" id="hole-fields" data-disabled="true">
+                    <label class="field">
+                        <span>Left offset (mm)</span>
+                      <input id="hole-x-mm" name="holeXmm" type="number" min="0" step="1" value="100" disabled>
+                    </label>
+
+                    <label class="field">
+                        <span>Bottom offset (mm)</span>
+                      <input id="hole-y-mm" name="holeYmm" type="number" min="0" step="1" value="100" disabled>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="subgroup">
+                    <p class="subgroup__title">Pattern</p>
+                  <div class="field-group field-grid field-grid--two" id="hole-pattern-fields" data-disabled="true">
+                    <label class="field">
+                        <span>Columns</span>
+                      <input id="hole-count-x" name="holeCountX" type="number" min="1" step="1" value="1" disabled>
+                    </label>
+
+                    <label class="field">
+                        <span>Rows</span>
+                      <input id="hole-count-y" name="holeCountY" type="number" min="1" step="1" value="1" disabled>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="subgroup">
+                    <p class="subgroup__title">Size</p>
+                  <div class="field-group" id="hole-size-fields" data-disabled="true">
+                    <label class="field field--full">
+                        <span>Hole diameter (mm)</span>
+                      <input id="hole-diameter-mm" name="holeDiameterMm" type="number" min="1" step="1" value="35" disabled>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="accordion-step" data-step="5" data-expanded="false">
+            <button class="accordion-step__header" id="step-button-5" type="button" aria-expanded="false" aria-controls="step-panel-5">
+              <span class="accordion-step__meta">Step 5 of 6</span>
+              <span class="accordion-step__title">Review</span>
+            </button>
+
+            <div class="accordion-step__panel" id="step-panel-5" role="region" aria-labelledby="step-button-5" hidden>
+              <section class="metrics metrics--summary" id="metrics" aria-label="Configuration summary">
+                <p class="metrics__summary-line" id="metric-material">Material -</p>
+                <p class="metrics__summary-line" id="metric-length">Length -</p>
+                <p class="metrics__summary-line" id="metric-width">Width -</p>
+                <p class="metrics__summary-line" id="metric-thickness">Thickness -</p>
+                <p class="metrics__summary-line" id="metric-quantity">Quantity -</p>
+                <p class="metrics__summary-line" id="metric-corner-radius">Corner radius -</p>
+                <p class="metrics__summary-line" id="metric-hole">Hole -</p>
+              </section>
+
+              <p id="status-message" class="status" role="status" aria-live="polite">
+                Enter valid dimensions to generate the plywood plate automatically.
+              </p>
+
+              <div class="actions actions--review">
+                <button id="add-plank-button" class="button-secondary" type="button">Add plank to set</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="accordion-step" data-step="6" data-expanded="false">
+            <button class="accordion-step__header" id="step-button-6" type="button" aria-expanded="false" aria-controls="step-panel-6">
+              <span class="accordion-step__meta">Step 6 of 6</span>
+              <span class="accordion-step__title">Request a quote</span>
+              <span class="accordion-step__count" id="quote-count-badge" hidden>0 plates added</span>
+            </button>
+
+            <div class="accordion-step__panel" id="step-panel-6" role="region" aria-labelledby="step-button-6" hidden>
+              <section class="quote-builder">
+                <div class="quote-builder__header">
+                  <p class="control-group__eyebrow">Quote Set</p>
+                  <h3>Planks selected for pricing</h3>
+                </div>
+
+                <div class="field-grid field-grid--two">
+                  <label class="field">
+                    <span>Name</span>
+                    <input id="customer-name" name="customerName" type="text" placeholder="Your name">
+                  </label>
+
+                  <label class="field">
+                    <span>Email</span>
+                    <input id="customer-email" name="customerEmail" type="email" placeholder="your@email.com">
+                  </label>
+
+                  <label class="field field--full">
+                    <span>Phone</span>
+                    <input id="customer-phone" name="customerPhone" type="tel" placeholder="+31 6 12345678">
+                  </label>
+                </div>
+
+                <div id="quote-empty" class="quote-empty">
+                  No planks added yet. Configure a panel and use "Add plank to set".
+                </div>
+
+                <div id="quote-list" class="quote-list"></div>
+
+                <div class="actions actions--review">
+                  <button id="clear-quote-button" class="button-ghost" type="button">Clear set</button>
+                  <button
+                    id="quote-request-button"
+                    class="button-link"
+                    type="button"
+                    aria-disabled="true"
+                    disabled
+                  >
+                    Request quote
+                  </button>
+                </div>
+
+                <p id="quote-status-message" class="status" role="status" aria-live="polite"></p>
+              </section>
+            </div>
+          </section>
+        </form>
+      </section>
+
+      <section class="viewer-shell">
+        <button
+          id="open-controls-button"
+          class="viewer-shell__mobile-trigger"
+          type="button"
+          aria-expanded="false"
+          aria-controls="controls-drawer"
+        >
+          Change size
+        </button>
+
+        <model-viewer
+          id="model-viewer"
+          class="viewer"
+          ar
+          ar-modes="webxr scene-viewer quick-look"
+          camera-controls
+          interaction-prompt="auto"
+          shadow-intensity="1"
+          environment-image="neutral"
+          exposure="1"
+          tone-mapping="neutral"
+          poster=""
+        >
+          <button slot="ar-button" class="viewer__ar-button" type="button" aria-label="View in AR">
+            AR
+          </button>
+        </model-viewer>
+
+        <div class="viewer__empty" id="viewer-empty">
+          The plywood plate will appear here as soon as the dimensions are valid.
+        </div>
+      </section>
+
+      <div class="page__backdrop" id="mobile-backdrop" hidden></div>
+    </main>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
