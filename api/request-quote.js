@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 
-const TO_ADDRESS = "paul@knalamsterdam.com";
+const TO_ADDRESS = "Info@thecarvecompany.com";
 const FROM_ADDRESS = "ideas@knalamsterdam.com";
 
 /**
