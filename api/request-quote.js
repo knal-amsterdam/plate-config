@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 
 const TO_ADDRESS = "Info@thecarvecompany.com";
-const FROM_ADDRESS = "configurator@knalamsterdam.com";
+const FROM_ADDRESS = "ideas@knalamsterdam.com";
 
 /**
  * Validates the incoming request body and returns structured quote data.
@@ -33,7 +33,7 @@ export function parseQuotePayload(body) {
  */
 export function buildEmailBody({ customerName, customerEmail, customerPhone, items }) {
   const lines = [
-    "Hello Knal Amsterdam,",
+    "Hello,",
     "",
     "Contact details:",
     `Name: ${customerName}`,
@@ -44,8 +44,6 @@ export function buildEmailBody({ customerName, customerEmail, customerPhone, ite
     "",
     ...items.map((item) => `${item.title}: ${item.description}`),
     "",
-    "Kind regards,",
-    "De Knal Configurator",
   ];
 
   return lines.join("\n");
