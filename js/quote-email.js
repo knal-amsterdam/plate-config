@@ -92,6 +92,7 @@ export function normalizeQuotePayload(payload) {
   const customerName = String(payload?.customerName || "").trim();
   const customerEmail = String(payload?.customerEmail || "").trim();
   const customerPhone = String(payload?.customerPhone || "").trim();
+  const customerNote = String(payload?.customerNote || "").trim();
   const items = Array.isArray(payload?.items) ? payload.items : [];
 
   if (!customerName) {
@@ -110,6 +111,7 @@ export function normalizeQuotePayload(payload) {
     customerName,
     customerEmail,
     customerPhone,
+    customerNote,
     items: items.map((item, index) => normalizeQuoteItem(item, index)),
   };
 }
@@ -228,11 +230,12 @@ function normalizeQuoteItem(item, index) {
   };
 }
 
-function buildInternalEmail({ customerName, customerEmail, customerPhone, items }, batchSummaries) {
+function buildInternalEmail({ customerName, customerEmail, customerPhone, customerNote, items }, batchSummaries) {
   const detailRows = [
     ["Name", customerName],
     ["Email", customerEmail],
     ["Phone", customerPhone || "-"],
+    ["Note", customerNote || "-"],
     ["Sheet layout", `${STOCK_SHEET_LENGTH_MM} x ${STOCK_SHEET_WIDTH_MM} mm`],
     ["Sheet margin / gap", `${SHEET_LAYOUT_MARGIN_MM} mm / ${SHEET_LAYOUT_GAP_MM} mm`],
     ...buildThicknessBasePriceRows(batchSummaries),
@@ -245,6 +248,7 @@ function buildInternalEmail({ customerName, customerEmail, customerPhone, items 
     `Name: ${customerName}`,
     `Email: ${customerEmail}`,
     `Phone: ${customerPhone || "-"}`,
+    `Note: ${customerNote || "-"}`,
     `Sheet layout: ${STOCK_SHEET_LENGTH_MM} x ${STOCK_SHEET_WIDTH_MM} mm, margin ${SHEET_LAYOUT_MARGIN_MM} mm, gap ${SHEET_LAYOUT_GAP_MM} mm`,
     ...buildThicknessBasePriceRows(batchSummaries).map(([label, value]) => `${label}: ${value}`),
     `Transport / handling: ${formatEuro(TRANSPORT_HANDLING_PRICE_EUR)}`,
@@ -273,11 +277,12 @@ function buildInternalEmail({ customerName, customerEmail, customerPhone, items 
   };
 }
 
-function buildConfirmationEmail({ customerName, items }, batchSummaries) {
+function buildConfirmationEmail({ customerName, customerNote, items }, batchSummaries) {
   const lines = [
     `Hi ${customerName},`,
     "",
     "Thanks for your quote request. We received the plank set below and will get back to you as soon as possible.",
+    ...(customerNote ? [`Your note: ${customerNote}`, ""] : []),
     "",
     ...items.flatMap((item) => [
       `${item.title}: ${item.description}`,
@@ -302,6 +307,7 @@ function buildConfirmationEmail({ customerName, items }, batchSummaries) {
       items,
       batchSummaries,
       details: [
+        ["Note", customerNote || "-"],
         ...buildThicknessBasePriceRows(batchSummaries),
         ["Transport / handling", formatEuro(TRANSPORT_HANDLING_PRICE_EUR)],
       ],

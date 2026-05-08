@@ -1,6 +1,6 @@
 import { getEmailConfigurationError, isUserInputError, sendQuoteRequestEmails } from "../js/quote-email.js";
 
-const TO_ADDRESS = "ideas@knalamsterdam.com";
+const TO_ADDRESS = "Info@thecarvecompany.com";
 const FROM_ADDRESS = "ideas@knalamsterdam.com";
 
 export default async function handler(req, res) {
