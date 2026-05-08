@@ -32,6 +32,7 @@ export function getDomReferences() {
     holeSizeFields: document.querySelector("#hole-size-fields"),
     holeSettingsPanel: document.querySelector("#hole-settings-panel"),
     addPlankButton: document.querySelector("#add-plank-button"),
+    saveNewPlankButton: document.querySelector("#save-new-plank-button"),
     reviewOverviewButton: document.querySelector("#review-overview-button"),
     overviewButton: document.querySelector("#overview-button"),
     viewerOverviewButton: document.querySelector("#viewer-overview-button"),
@@ -48,6 +49,7 @@ export function getDomReferences() {
     customerNameInput: document.querySelector("#customer-name"),
     customerEmailInput: document.querySelector("#customer-email"),
     customerPhoneInput: document.querySelector("#customer-phone"),
+    customerNoteInput: document.querySelector("#customer-note"),
     statusMessage: document.querySelector("#status-message"),
     modelViewer: document.querySelector("#model-viewer"),
     emptyState: document.querySelector("#viewer-empty"),
@@ -197,11 +199,12 @@ export function renderQuoteItems({ quoteRequestButton, quoteCountBadge }, items)
   quoteRequestButton.setAttribute("aria-disabled", "false");
 }
 
-export function readContactValues({ customerNameInput, customerEmailInput, customerPhoneInput }) {
+export function readContactValues({ customerNameInput, customerEmailInput, customerPhoneInput, customerNoteInput }) {
   return {
     customerName: customerNameInput.value.trim(),
     customerEmail: customerEmailInput.value.trim(),
     customerPhone: customerPhoneInput.value.trim(),
+    customerNote: customerNoteInput.value.trim(),
   };
 }
 

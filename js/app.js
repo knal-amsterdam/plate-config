@@ -65,6 +65,7 @@ dom.holeCountXInput.addEventListener("input", handleInputChange);
 dom.holeCountYInput.addEventListener("input", handleInputChange);
 dom.holeDiameterInput.addEventListener("input", handleInputChange);
 dom.addPlankButton.addEventListener("click", handleAddPlank);
+dom.saveNewPlankButton.addEventListener("click", handleSaveAndNewPlank);
 dom.reviewOverviewButton.addEventListener("click", handleOpenOverview);
 dom.overviewButton.addEventListener("click", handleOpenOverview);
 dom.viewerOverviewButton.addEventListener("click", handleOpenOverview);
@@ -76,6 +77,7 @@ dom.overviewTableBody.addEventListener("click", handleOverviewTableClick);
 dom.customerNameInput.addEventListener("input", updateQuoteRequestState);
 dom.customerEmailInput.addEventListener("input", updateQuoteRequestState);
 dom.customerPhoneInput.addEventListener("input", updateQuoteRequestState);
+dom.customerNoteInput.addEventListener("input", updateQuoteRequestState);
 window.addEventListener("keydown", handleKeyDown);
 window.addEventListener("resize", syncDrawerStateForViewport);
 window.addEventListener("beforeunload", cleanup);
@@ -144,7 +146,6 @@ async function handleMaterialCardSelect(card) {
 
 async function initializeApp() {
   await renderFromInputs();
-  ensureDefaultQuoteItem();
 }
 
 async function renderFromInputs() {
@@ -359,20 +360,26 @@ function handleClearQuote() {
   setStatus(dom.statusMessage, "Quote set cleared.", "idle");
 }
 
-function ensureDefaultQuoteItem() {
-  if (quoteItems.length > 0) {
+function handleSaveAndNewPlank() {
+  if (editingQuoteIndex === null || !quoteItems[editingQuoteIndex]) {
     return;
   }
 
   try {
     const formValues = readCurrentFormValues();
     validateDimensions(formValues);
-    quoteItems = [createQuoteItem(formValues, 1)];
+    const title = quoteItems[editingQuoteIndex].title || `Plank ${editingQuoteIndex + 1}`;
+    quoteItems[editingQuoteIndex] = buildQuoteItem(formValues, title);
+    editingQuoteIndex = null;
+    syncAddPlankButtonLabel();
     renderQuoteItems(dom, quoteItems);
     renderOverviewTable(dom, quoteItems);
     updateQuoteRequestState();
-  } catch {
-    // Leave the quote set empty if the default form values are not valid.
+    setStatus(dom.statusMessage, `${title} saved. You are now editing a new plate.`, "success");
+    setStatus(dom.quoteStatusMessage, "", "idle");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The plank could not be saved.";
+    setStatus(dom.statusMessage, message, "error");
   }
 }
 
@@ -543,6 +550,7 @@ function syncLoadedQuoteItemToForm(item) {
 
 function syncAddPlankButtonLabel() {
   dom.addPlankButton.textContent = editingQuoteIndex !== null ? "Save loaded plank" : "Add plank to set";
+  dom.saveNewPlankButton.hidden = editingQuoteIndex === null;
 }
 
 function updateQuoteRequestState() {
@@ -550,6 +558,7 @@ function updateQuoteRequestState() {
     customerNameInput: dom.customerNameInput,
     customerEmailInput: dom.customerEmailInput,
     customerPhoneInput: dom.customerPhoneInput,
+    customerNoteInput: dom.customerNoteInput,
   });
   const canSubmit = quoteItems.length > 0 && customerName.length > 0 && isValidEmail(customerEmail);
 
@@ -564,10 +573,11 @@ async function handleQuoteRequest() {
     dom.quoteRequestButton.disabled = true;
     dom.quoteRequestButton.setAttribute("aria-disabled", "true");
 
-    const { customerName, customerEmail, customerPhone } = readContactValues({
+    const { customerName, customerEmail, customerPhone, customerNote } = readContactValues({
       customerNameInput: dom.customerNameInput,
       customerEmailInput: dom.customerEmailInput,
       customerPhoneInput: dom.customerPhoneInput,
+      customerNoteInput: dom.customerNoteInput,
     });
 
     const response = await fetch("/api/request-quote", {
@@ -579,6 +589,7 @@ async function handleQuoteRequest() {
         customerName,
         customerEmail,
         customerPhone,
+        customerNote,
         items: quoteItems,
       }),
     });
@@ -607,6 +618,7 @@ function validateQuoteRequest() {
     customerNameInput: dom.customerNameInput,
     customerEmailInput: dom.customerEmailInput,
     customerPhoneInput: dom.customerPhoneInput,
+    customerNoteInput: dom.customerNoteInput,
   });
 
   if (!customerName) {
