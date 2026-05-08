@@ -3,13 +3,16 @@ import { createPlywoodPlateModel, disposePlywoodPlateModel } from "./model-facto
 import { calculatePlatePricing, formatEuro, getMaterialByKey, validatePlateConstraints } from "./pricing.js";
 import { createPreviewController } from "./preview.js";
 import {
+  closeOverviewModal,
   closeMobileDrawer,
   getDomReferences,
   isMobileViewport,
+  openOverviewModal,
   openMobileDrawer,
   readContactValues,
   readFormValues,
   resetMetrics,
+  renderOverviewTable,
   renderQuoteItems,
   setStatus,
   setExpandedStep,
@@ -28,6 +31,7 @@ const preview = createPreviewController({
 
 let currentModel = null;
 let quoteItems = [];
+let editingQuoteIndex = null;
 
 dom.form.addEventListener("submit", preventSubmitOnly);
 dom.openControlsButton.addEventListener("click", handleOpenControls);
@@ -61,8 +65,14 @@ dom.holeCountXInput.addEventListener("input", handleInputChange);
 dom.holeCountYInput.addEventListener("input", handleInputChange);
 dom.holeDiameterInput.addEventListener("input", handleInputChange);
 dom.addPlankButton.addEventListener("click", handleAddPlank);
+dom.reviewOverviewButton.addEventListener("click", handleOpenOverview);
+dom.overviewButton.addEventListener("click", handleOpenOverview);
+dom.viewerOverviewButton.addEventListener("click", handleOpenOverview);
 dom.clearQuoteButton.addEventListener("click", handleClearQuote);
 dom.quoteRequestButton.addEventListener("click", handleQuoteRequest);
+dom.closeOverviewButton.addEventListener("click", handleCloseOverview);
+dom.overviewBackdrop.addEventListener("click", handleCloseOverview);
+dom.overviewTableBody.addEventListener("click", handleOverviewTableClick);
 dom.customerNameInput.addEventListener("input", updateQuoteRequestState);
 dom.customerEmailInput.addEventListener("input", updateQuoteRequestState);
 dom.customerPhoneInput.addEventListener("input", updateQuoteRequestState);
@@ -77,10 +87,12 @@ syncChoiceCards(dom.holeChoiceCards, dom.holeEnabledInput.checked);
 syncMaterialCards(dom, dom.materialVariantKeyInput.value);
 setExpandedStep(dom.accordionSteps, 1);
 renderQuoteItems(dom, quoteItems);
+renderOverviewTable(dom, quoteItems);
 updateQuoteRequestState();
 setStatus(dom.quoteStatusMessage, "", "idle");
 syncDrawerStateForViewport();
-renderFromInputs();
+syncAddPlankButtonLabel();
+await initializeApp();
 
 function preventSubmitOnly(event) {
   event.preventDefault();
@@ -99,11 +111,14 @@ function handleCloseControls() {
 }
 
 function handleKeyDown(event) {
-  if (event.key !== "Escape" || !isMobileViewport() || dom.page.dataset.mobileDrawerOpen !== "true") {
+  if (event.key === "Escape" && dom.overviewModal.getAttribute("aria-hidden") === "false") {
+    handleCloseOverview();
     return;
   }
 
-  closeMobileDrawer(dom);
+  if (event.key === "Escape" && isMobileViewport() && dom.page.dataset.mobileDrawerOpen === "true") {
+    closeMobileDrawer(dom);
+  }
 }
 
 function syncDrawerStateForViewport() {
@@ -125,6 +140,11 @@ async function handleInputChange() {
 async function handleMaterialCardSelect(card) {
   syncMaterialCards(dom, card.dataset.variantKey || "");
   await renderFromInputs();
+}
+
+async function initializeApp() {
+  await renderFromInputs();
+  ensureDefaultQuoteItem();
 }
 
 async function renderFromInputs() {
@@ -186,9 +206,20 @@ async function renderFromInputs() {
       ...currentModel.dimensions,
       materialVariantLabel: formValues.materialVariantLabel,
     });
+
+    if (editingQuoteIndex !== null && quoteItems[editingQuoteIndex]) {
+      const title = quoteItems[editingQuoteIndex].title || `Plank ${editingQuoteIndex + 1}`;
+      quoteItems[editingQuoteIndex] = buildQuoteItem(formValues, title);
+      renderQuoteItems(dom, quoteItems);
+      renderOverviewTable(dom, quoteItems);
+      updateQuoteRequestState();
+    }
+
     setStatus(
       dom.statusMessage,
-      "Plywood plate updated. Review the settings, add the plank to your set, or inspect it in AR on a supported device.",
+      editingQuoteIndex !== null
+        ? "Plywood plate updated. The loaded plank and overview table are in sync."
+        : "Plywood plate updated. Review the settings, add the plank to your set, or inspect it in AR on a supported device.",
       "success"
     );
   } catch (error) {
@@ -295,12 +326,20 @@ function handleAddPlank() {
     const formValues = readCurrentFormValues();
     validateDimensions(formValues);
 
-    const item = createQuoteItem(formValues, quoteItems.length + 1);
-    quoteItems = [...quoteItems, item];
+    if (editingQuoteIndex !== null && quoteItems[editingQuoteIndex]) {
+      const title = quoteItems[editingQuoteIndex].title || `Plank ${editingQuoteIndex + 1}`;
+      quoteItems[editingQuoteIndex] = buildQuoteItem(formValues, title);
+      setStatus(dom.statusMessage, `${title} saved from the viewer.`, "success");
+    } else {
+      const item = createQuoteItem(formValues, quoteItems.length + 1);
+      quoteItems = [...quoteItems, item];
+      setStatus(dom.statusMessage, "Current plank added to the quote set.", "success");
+    }
+
     renderQuoteItems(dom, quoteItems);
+    renderOverviewTable(dom, quoteItems);
     updateQuoteRequestState();
     setStatus(dom.quoteStatusMessage, "", "idle");
-    setStatus(dom.statusMessage, "Current plank added to the quote set.", "success");
   } catch (error) {
     const message = error instanceof Error ? error.message : "The plank could not be added.";
     setStatus(dom.statusMessage, message, "error");
@@ -309,11 +348,94 @@ function handleAddPlank() {
 
 function handleClearQuote() {
   quoteItems = [];
+  editingQuoteIndex = null;
+  syncAddPlankButtonLabel();
   renderQuoteItems(dom, quoteItems);
+  renderOverviewTable(dom, quoteItems);
+  closeOverviewModal(dom, { restoreFocus: false });
   updateQuoteRequestState();
   setExpandedStep(dom.accordionSteps, 6);
   setStatus(dom.quoteStatusMessage, "", "idle");
   setStatus(dom.statusMessage, "Quote set cleared.", "idle");
+}
+
+function ensureDefaultQuoteItem() {
+  if (quoteItems.length > 0) {
+    return;
+  }
+
+  try {
+    const formValues = readCurrentFormValues();
+    validateDimensions(formValues);
+    quoteItems = [createQuoteItem(formValues, 1)];
+    renderQuoteItems(dom, quoteItems);
+    renderOverviewTable(dom, quoteItems);
+    updateQuoteRequestState();
+  } catch {
+    // Leave the quote set empty if the default form values are not valid.
+  }
+}
+
+function handleOpenOverview() {
+  renderOverviewTable(dom, quoteItems);
+  openOverviewModal(dom);
+}
+
+function handleCloseOverview() {
+  closeOverviewModal(dom);
+}
+
+function handleOverviewTableClick(event) {
+  const saveButton = event.target.closest("[data-action='save-plank']");
+
+  if (saveButton) {
+    const row = saveButton.closest("tr");
+    saveOverviewRow(row);
+    return;
+  }
+
+  const button = event.target.closest("[data-action='load-plank']");
+
+  if (!button) {
+    return;
+  }
+
+  const row = button.closest("tr");
+  const index = Number(row?.dataset.index);
+
+  if (!Number.isInteger(index) || !quoteItems[index]) {
+    return;
+  }
+
+  loadQuoteItemIntoForm(quoteItems[index], index);
+}
+
+function saveOverviewRow(row) {
+  if (!row) {
+    return;
+  }
+
+  const index = Number(row.dataset.index);
+
+  if (!Number.isInteger(index) || !quoteItems[index]) {
+    return;
+  }
+
+  try {
+    const nextValues = readOverviewRowValues(row, quoteItems[index]);
+    validateDimensions(nextValues);
+    quoteItems[index] = buildQuoteItem(nextValues, nextValues.title || quoteItems[index].title || `Plank ${index + 1}`);
+    if (editingQuoteIndex === index) {
+      syncLoadedQuoteItemToForm(quoteItems[index]);
+    }
+    renderQuoteItems(dom, quoteItems);
+    renderOverviewTable(dom, quoteItems);
+    updateQuoteRequestState();
+    setStatus(dom.quoteStatusMessage, `${quoteItems[index].title} saved.`, "success");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The plank could not be saved.";
+    setStatus(dom.quoteStatusMessage, message, "error");
+  }
 }
 
 function readCurrentFormValues() {
@@ -337,8 +459,13 @@ function readCurrentFormValues() {
 }
 
 function createQuoteItem(values, index) {
+  return buildQuoteItem(values, `Plank ${index}`);
+}
+
+function buildQuoteItem(values, title) {
+  const { title: _ignoredTitle, ...quoteValues } = values;
   const material = getMaterialByKey(values.materialKey);
-  const pricing = createPricingSummary(values);
+  const pricing = createPricingSummary(quoteValues);
   const holeText = values.holeEnabled
     ? `Holes ${values.holeCountX}x${values.holeCountY}, first ${values.holeXmm}/${values.holeYmm} mm, diameter ${values.holeDiameterMm} mm`
     : "No holes";
@@ -348,15 +475,74 @@ function createQuoteItem(values, index) {
     : material.label;
 
   return {
-    title: `Plank ${index}`,
+    title,
     description: `Qty ${values.quantity}, ${materialText}, ${values.lengthMm} x ${values.widthMm} x ${values.thicknessMm} mm, ${cornerText}, ${holeText}`,
     priceLabel: pricing.formattedTotalPrice,
     values: {
-      ...values,
+      ...quoteValues,
       materialLabel: material.label,
       pricing,
     },
   };
+}
+
+function readOverviewRowValues(row, currentItem) {
+  const currentValues = currentItem.values;
+  const nextVariantKey = readRowFieldValue(row, "materialVariantKey") || currentValues.materialVariantKey;
+  const materialCard = dom.materialCards.find((card) => card.dataset.variantKey === nextVariantKey);
+
+  return {
+    ...currentValues,
+    materialKey: currentValues.materialKey || "birch-multiplex",
+    materialVariantKey: nextVariantKey,
+    materialVariantLabel: materialCard?.dataset.variantLabel || currentValues.materialVariantLabel,
+    quantity: Number(readRowFieldValue(row, "quantity") || currentValues.quantity),
+    lengthMm: Number(readRowFieldValue(row, "lengthMm") || currentValues.lengthMm),
+    widthMm: Number(readRowFieldValue(row, "widthMm") || currentValues.widthMm),
+    thicknessMm: Number(readRowFieldValue(row, "thicknessMm") || currentValues.thicknessMm),
+    title: readRowFieldValue(row, "title").trim(),
+  };
+}
+
+function readRowFieldValue(row, field) {
+  const element = row.querySelector(`[data-field='${field}']`);
+  return element?.value ?? "";
+}
+
+async function loadQuoteItemIntoForm(item, index) {
+  editingQuoteIndex = index;
+  syncAddPlankButtonLabel();
+  syncLoadedQuoteItemToForm(item);
+  closeOverviewModal(dom);
+  setExpandedStep(dom.accordionSteps, 5);
+  await renderFromInputs();
+  setStatus(dom.statusMessage, `${item.title} loaded into the viewer. Editing now stays synced with the table.`, "success");
+}
+
+function syncLoadedQuoteItemToForm(item) {
+  const values = item.values;
+  dom.materialInput.value = values.materialKey;
+  syncMaterialCards(dom, values.materialVariantKey);
+  dom.lengthInput.value = String(values.lengthMm);
+  dom.widthInput.value = String(values.widthMm);
+  dom.thicknessInput.value = String(values.thicknessMm);
+  dom.quantityInput.value = String(values.quantity);
+  dom.roundedCornersInput.checked = Boolean(values.roundedCorners);
+  syncChoiceCards(dom.cornerChoiceCards, dom.roundedCornersInput.checked);
+  dom.cornerRadiusInput.value = String(values.cornerRadiusMm);
+  syncCornerRadiusField(dom);
+  dom.holeEnabledInput.checked = Boolean(values.holeEnabled);
+  syncChoiceCards(dom.holeChoiceCards, dom.holeEnabledInput.checked);
+  dom.holeXInput.value = String(values.holeXmm);
+  dom.holeYInput.value = String(values.holeYmm);
+  dom.holeCountXInput.value = String(values.holeCountX);
+  dom.holeCountYInput.value = String(values.holeCountY);
+  dom.holeDiameterInput.value = String(values.holeDiameterMm);
+  syncHoleFields(dom);
+}
+
+function syncAddPlankButtonLabel() {
+  dom.addPlankButton.textContent = editingQuoteIndex !== null ? "Save loaded plank" : "Add plank to set";
 }
 
 function updateQuoteRequestState() {

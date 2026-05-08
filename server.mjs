@@ -11,12 +11,13 @@ const __dirname = path.dirname(__filename);
 await loadEnvFile(path.join(__dirname, ".env"));
 const PORT = Number(process.env.PORT || 3000);
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
-const QUOTE_TO_EMAIL = process.env.QUOTE_TO_EMAIL || "ideas@knalamsterdam.com";
-const PRIMARY_QUOTE_RECIPIENT = QUOTE_TO_EMAIL;
-const SECONDARY_QUOTE_RECIPIENT = "Info@thecarvecompany.com";
-const QUOTE_FROM_EMAIL = process.env.QUOTE_FROM_EMAIL || "";
-const REPLY_TO_EMAIL = process.env.QUOTE_REPLY_TO_EMAIL || QUOTE_TO_EMAIL;
 const NODE_ENV = process.env.NODE_ENV || "development";
+const DEFAULT_QUOTE_TO_EMAIL = NODE_ENV === "production"
+  ? "Info@thecarvecompany.com"
+  : "Ideas@knalamsterdam.com";
+const QUOTE_TO_EMAIL = process.env.QUOTE_TO_EMAIL || DEFAULT_QUOTE_TO_EMAIL;
+const QUOTE_FROM_EMAIL = process.env.QUOTE_FROM_EMAIL || "request@knalamsterdam.com";
+const REPLY_TO_EMAIL = process.env.QUOTE_REPLY_TO_EMAIL || QUOTE_TO_EMAIL;
 
 const CONTENT_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -85,7 +86,7 @@ async function handleQuoteRequest(request, response) {
 
     try {
       await sendResendEmail({
-        to: [PRIMARY_QUOTE_RECIPIENT],
+        to: [QUOTE_TO_EMAIL],
         subject: internalMessage.subject,
         text: internalMessage.text,
         html: internalMessage.html,
@@ -98,22 +99,6 @@ async function handleQuoteRequest(request, response) {
     } catch (error) {
       console.error("Primary internal quote email failed:", error);
       throw error;
-    }
-
-    try {
-      await sendResendEmail({
-        to: [SECONDARY_QUOTE_RECIPIENT],
-        subject: internalMessage.subject,
-        text: internalMessage.text,
-        html: internalMessage.html,
-        replyTo: normalized.customerEmail || REPLY_TO_EMAIL,
-        attachments: [
-          csvAttachment,
-          ...sheetLayoutAttachments,
-        ],
-      });
-    } catch (error) {
-      console.error("Secondary internal quote copy failed:", error);
     }
 
     try {
@@ -674,12 +659,8 @@ function getEmailConfigurationError() {
     return `Email sending is not configured yet. Add ${missingKeys.join(" and ")} to the server environment.`;
   }
 
-  if (!isValidEmail(PRIMARY_QUOTE_RECIPIENT)) {
+  if (!isValidEmail(QUOTE_TO_EMAIL)) {
     return "QUOTE_TO_EMAIL is not a valid email address.";
-  }
-
-  if (!isValidEmail(SECONDARY_QUOTE_RECIPIENT)) {
-    return "The secondary internal quote recipient is not a valid email address.";
   }
 
   if (!isValidEmail(QUOTE_FROM_EMAIL)) {

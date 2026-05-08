@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 
-const TO_ADDRESS = "Info@thecarvecompany.com";
+const TO_ADDRESS = "ideas@knalamsterdam.com";
 const FROM_ADDRESS = "ideas@knalamsterdam.com";
 
 /**
@@ -61,7 +61,7 @@ export async function sendQuoteEmail({ apiKey, customerName, customerEmail, cust
     from: FROM_ADDRESS,
     to: TO_ADDRESS,
     reply_to: customerEmail !== "-" ? customerEmail : undefined,
-    subject: "Quote request – plywood plank set",
+    subject: "Quote request - plywood plank set",
     text,
   });
 }
@@ -79,7 +79,6 @@ export default async function handler(req, res) {
     console.error("RESEND_API_KEY is not set");
     return res.status(500).json({ error: "Server misconfiguration" });
   }
-
   let payload;
   try {
     payload = parseQuotePayload(req.body);
