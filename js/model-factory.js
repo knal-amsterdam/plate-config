@@ -61,7 +61,6 @@ export async function createPlywoodPlateModel({
 
   const mesh = new THREE.Mesh(geometry, plateMaterial);
   mesh.name = "PlywoodPlate";
-  mesh.rotation.z = Math.PI / 2;
   scene.add(mesh);
 
   return {

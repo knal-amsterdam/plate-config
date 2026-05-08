@@ -88,7 +88,7 @@
             </button>
 
             <div class="accordion-step__panel" id="step-panel-2" role="region" aria-labelledby="step-button-2" hidden>
-              <div class="field-grid field-grid--three">
+              <div class="field-grid field-grid--two">
                 <label class="field">
                   <span>Length (mm)</span>
                   <input id="length-mm" name="lengthMm" type="number" min="1" max="2400" step="1" value="1000" required>
@@ -108,6 +108,10 @@
                     <option value="15">15 mm</option>
                     <option value="18" selected>18 mm</option>
                     <option value="21">21 mm</option>
+                    <option value="24">24 mm</option>
+                    <option value="27">27 mm</option>
+                    <option value="30">30 mm</option>
+                    <option value="40">40 mm</option>
                   </select>
                 </label>
 
@@ -136,8 +140,8 @@
                   data-selected="true"
                   aria-pressed="true"
                 >
+                  <img class="choice-card__image" src="./assets/straight-corner-no-hole.png" alt="Plate with straight corners and no holes">
                   <span class="choice-card__title">Square corners</span>
-                  <span class="choice-card__description">Keep the plate with clean 90 degree corners.</span>
                 </button>
                 <button
                   class="choice-card"
@@ -148,8 +152,8 @@
                   data-selected="false"
                   aria-pressed="false"
                 >
+                  <img class="choice-card__image" src="./assets/round-corner-no-hole.png" alt="Plate with rounded corners and no holes">
                   <span class="choice-card__title">Rounded corners</span>
-                  <span class="choice-card__description">Enable a radius and soften each corner.</span>
                 </button>
               </div>
 
@@ -189,8 +193,8 @@
                   data-selected="true"
                   aria-pressed="true"
                 >
+                  <img class="choice-card__image" src="./assets/straight-corner-no-hole.png" alt="Plate with straight corners and no holes">
                   <span class="choice-card__title">No holes</span>
-                  <span class="choice-card__description">Keep the plate surface uninterrupted.</span>
                 </button>
                 <button
                   class="choice-card"
@@ -201,8 +205,8 @@
                   data-selected="false"
                   aria-pressed="false"
                 >
+                  <img class="choice-card__image" src="./assets/straight-corner-hole.png" alt="Plate with straight corners and holes">
                   <span class="choice-card__title">Add holes</span>
-                  <span class="choice-card__description">Place one or more holes with custom offsets and sizing.</span>
                 </button>
               </div>
 
@@ -274,6 +278,15 @@
               </p>
 
               <div class="actions actions--review">
+                <button
+                  id="review-overview-button"
+                  class="button-secondary"
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-controls="overview-modal"
+                >
+                  Overview
+                </button>
                 <button id="add-plank-button" class="button-secondary" type="button">Add plank to set</button>
               </div>
             </div>
@@ -288,11 +301,6 @@
 
             <div class="accordion-step__panel" id="step-panel-6" role="region" aria-labelledby="step-button-6" hidden>
               <section class="quote-builder">
-                <div class="quote-builder__header">
-                  <p class="control-group__eyebrow">Quote Set</p>
-                  <h3>Planks selected for pricing</h3>
-                </div>
-
                 <div class="field-grid field-grid--two">
                   <label class="field">
                     <span>Name</span>
@@ -310,13 +318,17 @@
                   </label>
                 </div>
 
-                <div id="quote-empty" class="quote-empty">
-                  No planks added yet. Configure a panel and use "Add plank to set".
-                </div>
-
-                <div id="quote-list" class="quote-list"></div>
-
                 <div class="actions actions--review">
+                  <button
+                    id="overview-button"
+                    class="button-secondary"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-controls="overview-modal"
+                    disabled
+                  >
+                    Overview
+                  </button>
                   <button id="clear-quote-button" class="button-ghost" type="button">Clear set</button>
                   <button
                     id="quote-request-button"
@@ -337,6 +349,17 @@
       </section>
 
       <section class="viewer-shell">
+        <button
+          id="viewer-overview-button"
+          class="viewer-shell__overview-button"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="overview-modal"
+          hidden
+        >
+          Overview
+        </button>
+
         <button
           id="open-controls-button"
           class="viewer-shell__mobile-trigger"
@@ -371,6 +394,60 @@
       </section>
 
       <div class="page__backdrop" id="mobile-backdrop" hidden></div>
+
+      <div
+        id="overview-modal"
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="overview-title"
+        aria-hidden="true"
+        hidden
+      >
+        <div class="modal__backdrop" id="overview-backdrop"></div>
+        <div class="modal__panel">
+          <div class="modal__header">
+            <div>
+              <p class="control-group__eyebrow">Quote Set</p>
+              <h2 id="overview-title" class="modal__title">Plank overview</h2>
+            </div>
+            <button
+              id="close-overview-button"
+              class="panel__close-button"
+              type="button"
+              aria-label="Close plank overview"
+            >
+              Close
+            </button>
+          </div>
+
+          <div class="modal__body">
+            <div id="overview-empty" class="quote-empty">
+              No planks added yet. Configure a panel and use "Add plank to set".
+            </div>
+
+            <div id="overview-table-wrap" class="overview-table-wrap" hidden>
+              <table class="overview-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Plank</th>
+                    <th scope="col">Qty</th>
+                    <th scope="col">Material</th>
+                    <th scope="col">Length (mm)</th>
+                    <th scope="col">Width (mm)</th>
+                    <th scope="col">Thickness (mm)</th>
+                    <th scope="col">Corners</th>
+                    <th scope="col">Holes</th>
+                    <th scope="col">Save</th>
+                    <th scope="col">Load</th>
+                  </tr>
+                </thead>
+                <tbody id="overview-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
 
     <script type="module" src="./js/app.js"></script>

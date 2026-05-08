@@ -32,12 +32,19 @@ export function getDomReferences() {
     holeSizeFields: document.querySelector("#hole-size-fields"),
     holeSettingsPanel: document.querySelector("#hole-settings-panel"),
     addPlankButton: document.querySelector("#add-plank-button"),
+    reviewOverviewButton: document.querySelector("#review-overview-button"),
+    overviewButton: document.querySelector("#overview-button"),
+    viewerOverviewButton: document.querySelector("#viewer-overview-button"),
     clearQuoteButton: document.querySelector("#clear-quote-button"),
     quoteRequestButton: document.querySelector("#quote-request-button"),
-    quoteList: document.querySelector("#quote-list"),
-    quoteEmpty: document.querySelector("#quote-empty"),
     quoteCountBadge: document.querySelector("#quote-count-badge"),
     quoteStatusMessage: document.querySelector("#quote-status-message"),
+    overviewModal: document.querySelector("#overview-modal"),
+    overviewBackdrop: document.querySelector("#overview-backdrop"),
+    closeOverviewButton: document.querySelector("#close-overview-button"),
+    overviewEmpty: document.querySelector("#overview-empty"),
+    overviewTableWrap: document.querySelector("#overview-table-wrap"),
+    overviewTableBody: document.querySelector("#overview-table-body"),
     customerNameInput: document.querySelector("#customer-name"),
     customerEmailInput: document.querySelector("#customer-email"),
     customerPhoneInput: document.querySelector("#customer-phone"),
@@ -174,28 +181,10 @@ export function syncHoleFields({
   }
 }
 
-export function renderQuoteItems({ quoteList, quoteEmpty, quoteRequestButton, quoteCountBadge }, items) {
-  quoteList.innerHTML = "";
-  quoteEmpty.hidden = items.length > 0;
+export function renderQuoteItems({ quoteRequestButton, quoteCountBadge }, items) {
   if (quoteCountBadge) {
     quoteCountBadge.hidden = items.length === 0;
     quoteCountBadge.textContent = `${items.length} ${items.length === 1 ? "plate" : "plates"} added`;
-  }
-
-  for (const item of items) {
-    const wrapper = document.createElement("article");
-    wrapper.className = "quote-item";
-
-    const title = document.createElement("p");
-    title.className = "quote-item__title";
-    title.textContent = item.title;
-
-    const meta = document.createElement("p");
-    meta.className = "quote-item__meta";
-    meta.textContent = item.description;
-
-    wrapper.append(title, meta);
-    quoteList.append(wrapper);
   }
 
   if (items.length === 0) {
@@ -227,6 +216,179 @@ export function setExpandedStep(steps, activeStep) {
     button.setAttribute("aria-expanded", String(isActive));
     panel.hidden = !isActive;
   }
+}
+
+export function renderOverviewTable({
+  reviewOverviewButton,
+  overviewButton,
+  viewerOverviewButton,
+  overviewEmpty,
+  overviewTableWrap,
+  overviewTableBody,
+  thicknessInput,
+  materialCards,
+}, items) {
+  const canOpenOverview = true;
+  const hasOverviewContent = items.length > 0;
+
+  if (reviewOverviewButton) {
+    reviewOverviewButton.hidden = !canOpenOverview;
+    reviewOverviewButton.disabled = !canOpenOverview;
+    reviewOverviewButton.setAttribute("aria-disabled", String(!canOpenOverview));
+  }
+
+  if (overviewButton) {
+    overviewButton.hidden = !canOpenOverview;
+    overviewButton.disabled = !canOpenOverview;
+    overviewButton.setAttribute("aria-disabled", String(!canOpenOverview));
+  }
+
+  if (viewerOverviewButton) {
+    viewerOverviewButton.hidden = !canOpenOverview;
+    viewerOverviewButton.disabled = !canOpenOverview;
+    viewerOverviewButton.setAttribute("aria-disabled", String(!canOpenOverview));
+  }
+
+  if (!overviewEmpty || !overviewTableWrap || !overviewTableBody) {
+    return;
+  }
+
+  overviewTableBody.innerHTML = "";
+  overviewEmpty.hidden = hasOverviewContent;
+  overviewTableWrap.hidden = !hasOverviewContent;
+
+  for (const [index, item] of items.entries()) {
+    const row = document.createElement("tr");
+    const values = item.values || {};
+    row.dataset.index = String(index);
+    const cornersText = values.roundedCorners ? `${values.cornerRadiusMm} mm radius` : "Square";
+    const holesText = values.holeEnabled
+      ? `${values.holeCountX}x${values.holeCountY}, ${values.holeXmm}/${values.holeYmm}, d${values.holeDiameterMm}`
+      : "None";
+
+    row.append(
+      createTableCell(createTitleInput(item.title)),
+      createTableCell(createNumberInput("quantity", values.quantity, { min: 1, step: 1 })),
+      createTableCell(createMaterialEditor(values, materialCards)),
+      createTableCell(createNumberInput("lengthMm", values.lengthMm, { min: 1, step: 1 })),
+      createTableCell(createNumberInput("widthMm", values.widthMm, { min: 1, step: 1 })),
+      createTableCell(createThicknessEditor(values, thicknessInput)),
+      createTableCell(cornersText),
+      createTableCell(holesText),
+      createTableCell(createSaveButton()),
+      createTableCell(createLoadButton())
+    );
+
+    overviewTableBody.append(row);
+  }
+}
+
+function createTableCell(content) {
+  const cell = document.createElement("td");
+  if (typeof content === "string") {
+    cell.textContent = content;
+  } else if (content) {
+    cell.append(content);
+  }
+  return cell;
+}
+
+function createTitleInput(value) {
+  const input = document.createElement("input");
+  input.className = "overview-input";
+  input.type = "text";
+  input.value = value || "";
+  input.dataset.field = "title";
+  input.setAttribute("aria-label", "Plank name");
+  return input;
+}
+
+function createNumberInput(field, value, { min = 0, step = 1 } = {}) {
+  const input = document.createElement("input");
+  input.className = "overview-input overview-input--number";
+  input.type = "number";
+  input.value = String(value ?? "");
+  input.min = String(min);
+  input.step = String(step);
+  input.dataset.field = field;
+  input.setAttribute("aria-label", field);
+  return input;
+}
+
+function createSelect(field, value, options, ariaLabel) {
+  const select = document.createElement("select");
+  select.className = "overview-select";
+  select.dataset.field = field;
+  select.setAttribute("aria-label", ariaLabel);
+
+  for (const optionValue of options) {
+    const option = document.createElement("option");
+    option.value = optionValue.value;
+    option.textContent = optionValue.label;
+    option.selected = optionValue.value === String(value);
+    select.append(option);
+  }
+
+  return select;
+}
+
+function createEditorStack(label, controls) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "overview-stack";
+
+  const title = document.createElement("span");
+  title.className = "overview-stack__label";
+  title.textContent = label;
+
+  const body = document.createElement("div");
+  body.className = "overview-stack__controls";
+
+  for (const control of controls) {
+    body.append(control);
+  }
+
+  wrapper.append(title, body);
+  return wrapper;
+}
+
+function createMaterialEditor(values, materialCards = []) {
+  const variantOptions = materialCards.map((card) => ({
+    value: card.dataset.variantKey || "",
+    label: card.dataset.variantLabel || "",
+  }));
+  return createSelect("materialVariantKey", values.materialVariantKey, variantOptions, "Material variant");
+}
+
+function createThicknessEditor(values, thicknessInput) {
+  const thicknessOptions = Array.from(thicknessInput?.options || []).map((option) => ({
+    value: option.value,
+    label: option.textContent?.trim() || option.value,
+  }));
+
+  return createSelect("thicknessMm", values.thicknessMm, thicknessOptions, "Thickness");
+}
+
+function createLoadButton() {
+  const button = document.createElement("button");
+  button.className = "overview-icon-button";
+  button.type = "button";
+  button.dataset.action = "load-plank";
+  button.setAttribute("aria-label", "Load plank in viewer");
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 3a9 9 0 1 0 9 9a9.01 9.01 0 0 0-9-9Zm0 3.3a5.7 5.7 0 1 1-5.7 5.7A5.71 5.71 0 0 1 12 6.3Zm0 2.1a3.6 3.6 0 1 0 3.6 3.6A3.6 3.6 0 0 0 12 8.4Z" />
+    </svg>
+  `;
+  return button;
+}
+
+function createSaveButton() {
+  const button = document.createElement("button");
+  button.className = "overview-action-button";
+  button.type = "button";
+  button.dataset.action = "save-plank";
+  button.textContent = "Save";
+  return button;
 }
 
 export function syncMaterialCards({ materialCards, materialVariantKeyInput, materialVariantLabelInput }, nextVariantKey) {
@@ -274,5 +436,33 @@ export function closeMobileDrawer({ page, panel, openControlsButton, mobileBackd
 
   if (restoreFocus) {
     openControlsButton.focus();
+  }
+}
+
+export function openOverviewModal({ overviewModal, closeOverviewButton }) {
+  if (!overviewModal) {
+    return;
+  }
+
+  overviewModal.hidden = false;
+  overviewModal.setAttribute("aria-hidden", "false");
+  document.body.dataset.modalOpen = "true";
+
+  if (closeOverviewButton) {
+    closeOverviewButton.focus();
+  }
+}
+
+export function closeOverviewModal({ overviewModal, overviewButton }, { restoreFocus = true } = {}) {
+  if (!overviewModal) {
+    return;
+  }
+
+  overviewModal.hidden = true;
+  overviewModal.setAttribute("aria-hidden", "true");
+  delete document.body.dataset.modalOpen;
+
+  if (restoreFocus && overviewButton && !overviewButton.disabled) {
+    overviewButton.focus();
   }
 }

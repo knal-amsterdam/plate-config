@@ -1,12 +1,8 @@
 import { Resend } from "resend";
 
-const TO_ADDRESS = "ideas@knalamsterdam.com";
-const FROM_ADDRESS = "ideas@knalamsterdam.com";
+const TO_ADDRESS = process.env.LOCAL_QUOTE_TO_EMAIL || "ideas@knalamsterdam.com";
+const FROM_ADDRESS = process.env.QUOTE_FROM_EMAIL || "request@knalamsterdam.com";
 
-/**
- * Validates the incoming request body and returns structured quote data.
- * Throws an Error with a user-facing message if required fields are missing.
- */
 export function parseQuotePayload(body) {
   const { customerName, customerEmail, customerPhone, items } = body ?? {};
 
@@ -28,9 +24,6 @@ export function parseQuotePayload(body) {
   };
 }
 
-/**
- * Builds the plain-text email body from the parsed quote data.
- */
 export function buildEmailBody({ customerName, customerEmail, customerPhone, items }) {
   const lines = [
     "Hello,",
@@ -49,10 +42,6 @@ export function buildEmailBody({ customerName, customerEmail, customerPhone, ite
   return lines.join("\n");
 }
 
-/**
- * Sends the quote email via Resend.
- * Separated from the handler so it can be swapped in tests.
- */
 export async function sendQuoteEmail({ apiKey, customerName, customerEmail, customerPhone, items }) {
   const resend = new Resend(apiKey);
   const text = buildEmailBody({ customerName, customerEmail, customerPhone, items });
@@ -61,14 +50,11 @@ export async function sendQuoteEmail({ apiKey, customerName, customerEmail, cust
     from: FROM_ADDRESS,
     to: TO_ADDRESS,
     reply_to: customerEmail !== "-" ? customerEmail : undefined,
-    subject: "Quote request - plywood plank set",
+    subject: "Quote request - plywood plank set (local)",
     text,
   });
 }
 
-/**
- * Vercel serverless handler.
- */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -79,6 +65,7 @@ export default async function handler(req, res) {
     console.error("RESEND_API_KEY is not set");
     return res.status(500).json({ error: "Server misconfiguration" });
   }
+
   let payload;
   try {
     payload = parseQuotePayload(req.body);
