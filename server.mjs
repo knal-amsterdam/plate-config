@@ -3,8 +3,8 @@ import { readFile } from "node:fs/promises";
 import { createReadStream, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSheetLayoutDxfs } from "./js/dxf.js";
-import { calculatePlatePricing, formatEuro, getMaterialByKey, SHEET_LAYOUT_GAP_MM, SHEET_LAYOUT_MARGIN_MM, STOCK_SHEET_LENGTH_MM, STOCK_SHEET_WIDTH_MM } from "./js/pricing.js";
+import { createPlateDxf, createSheetLayoutDxfs, createSheetLayoutPlan } from "./js/dxf.js";
+import { calculatePlatePricing, formatEuro, getMaterialByKey, SHEET_LAYOUT_GAP_MM, SHEET_LAYOUT_MARGIN_MM, STOCK_SHEET_LENGTH_MM, STOCK_SHEET_WIDTH_MM, TRANSPORT_HANDLING_PRICE_EUR } from "./js/pricing.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +16,7 @@ const DEFAULT_QUOTE_TO_EMAIL = NODE_ENV === "production"
   ? "Info@thecarvecompany.com"
   : "Ideas@knalamsterdam.com";
 const QUOTE_TO_EMAIL = process.env.QUOTE_TO_EMAIL || DEFAULT_QUOTE_TO_EMAIL;
+const LOCAL_QUOTE_TO_EMAIL = process.env.LOCAL_QUOTE_TO_EMAIL || "Ideas@knalamsterdam.com";
 const QUOTE_FROM_EMAIL = process.env.QUOTE_FROM_EMAIL || "request@knalamsterdam.com";
 const REPLY_TO_EMAIL = process.env.QUOTE_REPLY_TO_EMAIL || QUOTE_TO_EMAIL;
 
@@ -35,7 +36,12 @@ const CONTENT_TYPES = new Map([
 const server = createServer(async (request, response) => {
   try {
     if (request.method === "POST" && request.url === "/api/request-quote") {
-      await handleQuoteRequest(request, response);
+      await handleQuoteRequest(request, response, { quoteToEmail: QUOTE_TO_EMAIL });
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/api/request-quote-local") {
+      await handleQuoteRequest(request, response, { quoteToEmail: LOCAL_QUOTE_TO_EMAIL });
       return;
     }
 
@@ -55,9 +61,9 @@ server.listen(PORT, () => {
   console.log(`Plate configurator server listening on http://localhost:${PORT}`);
 });
 
-async function handleQuoteRequest(request, response) {
+async function handleQuoteRequest(request, response, { quoteToEmail }) {
   try {
-    const configError = getEmailConfigurationError();
+    const configError = getEmailConfigurationError(quoteToEmail);
 
     if (configError) {
       sendJson(response, 500, {
@@ -68,31 +74,42 @@ async function handleQuoteRequest(request, response) {
 
     const payload = await readJsonBody(request);
     const normalized = normalizeQuotePayload(payload);
-    const internalMessage = buildInternalEmail(normalized);
-    const confirmationMessage = buildConfirmationEmail(normalized);
-    const sheetLayoutAttachments = createSheetLayoutDxfs(normalized.items, {
+    const layoutOptions = {
       sheetLengthMm: STOCK_SHEET_LENGTH_MM,
       sheetWidthMm: STOCK_SHEET_WIDTH_MM,
       marginMm: SHEET_LAYOUT_MARGIN_MM,
       gapMm: SHEET_LAYOUT_GAP_MM,
-    }).map((sheet) => ({
+    };
+    const sheetLayoutPlan = createSheetLayoutPlan(normalized.items, layoutOptions);
+    const batchSummaries = createBatchSummaries(normalized.items, sheetLayoutPlan);
+    const internalMessage = buildInternalEmail(normalized, batchSummaries);
+    const confirmationMessage = buildConfirmationEmail(normalized, batchSummaries);
+    const sheetLayoutAttachments = createSheetLayoutDxfs(normalized.items, layoutOptions).map((sheet) => ({
       filename: sheet.filename,
       content: Buffer.from(sheet.content, "utf8").toString("base64"),
     }));
+    const plateDxfZipAttachment = {
+      filename: `plate-dxf-files-${slugify(normalized.customerName || "customer")}.zip`,
+      content: createZipArchiveBase64(normalized.items.map((item, index) => ({
+        filename: `plate-${slugify(item.title || `plank-${index + 1}`)}.dxf`,
+        content: createPlateDxf(item),
+      }))),
+    };
     const csvAttachment = {
       filename: `quote-request-${slugify(normalized.customerName || "customer")}.csv`,
-      content: Buffer.from(buildQuoteCsv(normalized), "utf8").toString("base64"),
+      content: Buffer.from(buildQuoteCsv(normalized, batchSummaries), "utf8").toString("base64"),
     };
 
     try {
       await sendResendEmail({
-        to: [QUOTE_TO_EMAIL],
+        to: [quoteToEmail],
         subject: internalMessage.subject,
         text: internalMessage.text,
         html: internalMessage.html,
         replyTo: normalized.customerEmail || REPLY_TO_EMAIL,
         attachments: [
           csvAttachment,
+          plateDxfZipAttachment,
           ...sheetLayoutAttachments,
         ],
       });
@@ -107,8 +124,8 @@ async function handleQuoteRequest(request, response) {
         subject: confirmationMessage.subject,
         text: confirmationMessage.text,
         html: confirmationMessage.html,
-        replyTo: QUOTE_TO_EMAIL,
-        attachments: [csvAttachment],
+        replyTo: quoteToEmail,
+        attachments: [csvAttachment, plateDxfZipAttachment, ...sheetLayoutAttachments],
       });
     } catch (error) {
       console.error("Customer confirmation email failed:", error);
@@ -208,7 +225,16 @@ function normalizeQuoteItem(item, index) {
   };
 }
 
-function buildInternalEmail({ customerName, customerEmail, customerPhone, items }) {
+function buildInternalEmail({ customerName, customerEmail, customerPhone, items }, batchSummaries) {
+  const detailRows = [
+    ["Name", customerName],
+    ["Email", customerEmail],
+    ["Phone", customerPhone || "-"],
+    ["Sheet layout", `${STOCK_SHEET_LENGTH_MM} x ${STOCK_SHEET_WIDTH_MM} mm`],
+    ["Sheet margin / gap", `${SHEET_LAYOUT_MARGIN_MM} mm / ${SHEET_LAYOUT_GAP_MM} mm`],
+    ...buildThicknessBasePriceRows(batchSummaries),
+    ["Transport / handling", formatEuro(TRANSPORT_HANDLING_PRICE_EUR)],
+  ];
   const lines = [
     "New quote request from the plate configurator.",
     "",
@@ -217,15 +243,18 @@ function buildInternalEmail({ customerName, customerEmail, customerPhone, items 
     `Email: ${customerEmail}`,
     `Phone: ${customerPhone || "-"}`,
     `Sheet layout: ${STOCK_SHEET_LENGTH_MM} x ${STOCK_SHEET_WIDTH_MM} mm, margin ${SHEET_LAYOUT_MARGIN_MM} mm, gap ${SHEET_LAYOUT_GAP_MM} mm`,
+    ...buildThicknessBasePriceRows(batchSummaries).map(([label, value]) => `${label}: ${value}`),
+    `Transport / handling: ${formatEuro(TRANSPORT_HANDLING_PRICE_EUR)}`,
     "",
     "Selected planks",
     ...items.flatMap((item) => [
       item.title,
       item.description,
       `Path length: ${formatMeters(item.values.pricing.cutLengthM)}`,
-      `Material: ${formatEuro(item.values.pricing.materialPriceEur)}, milling: ${formatEuro(item.values.pricing.millingPriceEur)}, unit: ${formatEuro(item.values.pricing.unitPriceEur)}, total: ${formatEuro(item.values.pricing.totalPriceEur)}`,
       "",
     ]),
+    ...buildBatchSummaryLines(batchSummaries),
+    `Grand total incl. transport / handling: ${formatEuro(summarizeOrder(batchSummaries).grandTotalEur)}`,
   ];
 
   return {
@@ -235,18 +264,13 @@ function buildInternalEmail({ customerName, customerEmail, customerPhone, items 
       intro: "New quote request from the plate configurator.",
       lead: "Customer details and selected planks are listed below.",
       items,
-      details: [
-        ["Name", customerName],
-        ["Email", customerEmail],
-        ["Phone", customerPhone || "-"],
-        ["Sheet layout", `${STOCK_SHEET_LENGTH_MM} x ${STOCK_SHEET_WIDTH_MM} mm`],
-        ["Sheet margin / gap", `${SHEET_LAYOUT_MARGIN_MM} mm / ${SHEET_LAYOUT_GAP_MM} mm`],
-      ],
+      batchSummaries,
+      details: detailRows,
     }),
   };
 }
 
-function buildConfirmationEmail({ customerName, items }) {
+function buildConfirmationEmail({ customerName, items }, batchSummaries) {
   const lines = [
     `Hi ${customerName},`,
     "",
@@ -255,9 +279,13 @@ function buildConfirmationEmail({ customerName, items }) {
     ...items.flatMap((item) => [
       `${item.title}: ${item.description}`,
       `Path length: ${formatMeters(item.values.pricing.cutLengthM)}`,
-      `Material: ${formatEuro(item.values.pricing.materialPriceEur)}, milling: ${formatEuro(item.values.pricing.millingPriceEur)}, unit: ${formatEuro(item.values.pricing.unitPriceEur)}, total: ${formatEuro(item.values.pricing.totalPriceEur)}`,
       "",
     ]),
+    ...buildBatchSummaryLines(batchSummaries),
+    ...buildThicknessBasePriceRows(batchSummaries).map(([label, value]) => `${label}: ${value}`),
+    `Transport / handling: ${formatEuro(TRANSPORT_HANDLING_PRICE_EUR)}`,
+    `Grand total incl. transport / handling: ${formatEuro(summarizeOrder(batchSummaries).grandTotalEur)}`,
+    "",
     "Kind regards,",
     "Knal Amsterdam",
   ];
@@ -269,12 +297,17 @@ function buildConfirmationEmail({ customerName, items }) {
       greeting: `Hi ${customerName},`,
       lead: "Thanks for your quote request. We received the plank set below and will get back to you as soon as possible.",
       items,
+      batchSummaries,
+      details: [
+        ...buildThicknessBasePriceRows(batchSummaries),
+        ["Transport / handling", formatEuro(TRANSPORT_HANDLING_PRICE_EUR)],
+      ],
       closing: ["Kind regards,", "Knal Amsterdam"],
     }),
   };
 }
 
-function buildEmailHtml({ greeting = "", intro = "", lead = "", items, details = [], closing = [] }) {
+function buildEmailHtml({ greeting = "", intro = "", lead = "", items, batchSummaries = [], details = [], closing = [] }) {
   const detailRows = details.length > 0
     ? `
       <table style="border-collapse:collapse;margin:0 0 24px;width:100%;max-width:640px;">
@@ -291,21 +324,23 @@ function buildEmailHtml({ greeting = "", intro = "", lead = "", items, details =
     : "";
 
   return `
-    <div style="font-family:Arial,sans-serif;font-size:16px;line-height:1.5;color:#1f2937;">
+    <div style="font-family:Lexend,'Segoe UI',sans-serif;font-size:16px;line-height:1.5;color:#1f2937;">
       ${greeting ? `<p style="margin:0 0 24px;">${escapeHtml(greeting)}</p>` : ""}
       ${intro ? `<p style="margin:0 0 16px;">${escapeHtml(intro)}</p>` : ""}
       ${lead ? `<p style="margin:0 0 24px;">${escapeHtml(lead)}</p>` : ""}
       ${detailRows}
-      ${buildItemsTableHtml(items)}
+      ${buildItemsTableHtml(items, batchSummaries)}
       ${closing.map((line) => `<p style="margin:24px 0 0;">${escapeHtml(line)}</p>`).join("")}
     </div>
   `;
 }
 
-function buildItemsTableHtml(items) {
+function buildItemsTableHtml(items, batchSummaries) {
   const groupedItems = groupItemsByThickness(items);
-  const totalColumns = 14;
+  const batchSummaryByThickness = new Map(batchSummaries.map((summary) => [summary.thicknessMm, summary]));
+  const totalColumns = 17;
   const rows = groupedItems.map(({ thicknessMm, items: batchItems }) => {
+    const batchSummary = batchSummaryByThickness.get(Number(thicknessMm));
     const itemRows = batchItems.map((item) => {
       const pricing = item.values.pricing;
       const holeSummary = item.values.holeEnabled
@@ -324,21 +359,25 @@ function buildItemsTableHtml(items) {
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(String(item.values.lengthMm))}</td>
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(String(item.values.widthMm))}</td>
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(String(item.values.thicknessMm))}</td>
+          <td style="border:1px solid #dbe4f0;padding:10px;">${batchSummary ? escapeHtml(String(batchSummary.sheetCount)) : ""}</td>
+          <td style="border:1px solid #dbe4f0;padding:10px;">${batchSummary ? escapeHtml(formatEuro(batchSummary.stockSheetPriceEur)) : ""}</td>
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(cornerSummary)}</td>
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(holeSummary)}</td>
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatMeters(pricing.cutLengthM))}</td>
-          <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(pricing.materialPriceEur))}</td>
-          <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(pricing.millingPriceEur))}</td>
-          <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(pricing.unitPriceEur))}</td>
-          <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(pricing.totalPriceEur))}</td>
+          <td style="border:1px solid #dbe4f0;padding:10px;"></td>
+          <td style="border:1px solid #dbe4f0;padding:10px;"></td>
+          <td style="border:1px solid #dbe4f0;padding:10px;"></td>
+          <td style="border:1px solid #dbe4f0;padding:10px;"></td>
+          <td style="border:1px solid #dbe4f0;padding:10px;"></td>
         </tr>
       `;
     }).join("");
 
-    return `${itemRows}${buildThicknessSubtotalRow(thicknessMm, batchItems, totalColumns)}`;
+    return `${itemRows}${buildThicknessSubtotalRow(thicknessMm, batchSummary, totalColumns)}`;
   }).join("");
 
-  const grandTotalRow = buildGrandTotalRow(items, totalColumns);
+  const transportRow = buildOrderTransportRow(totalColumns);
+  const grandTotalRow = buildGrandTotalRow(batchSummaries, totalColumns);
 
   return `
     <table style="border-collapse:collapse;width:100%;max-width:720px;margin:0 0 24px;">
@@ -351,10 +390,13 @@ function buildItemsTableHtml(items) {
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Length (mm)</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Width (mm)</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Thickness (mm)</th>
+          <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Required plates</th>
+          <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Base sheet price</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Corners</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Holes</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Path length</th>
-          <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Material price</th>
+          <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Material cost</th>
+          <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Material + markup</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Milling price</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Unit price</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Total price</th>
@@ -362,13 +404,15 @@ function buildItemsTableHtml(items) {
       </thead>
       <tbody>
         ${rows}
+        ${transportRow}
         ${grandTotalRow}
       </tbody>
     </table>
   `;
 }
 
-function buildQuoteCsv({ customerName, customerEmail, customerPhone, items }) {
+function buildQuoteCsv({ customerName, customerEmail, customerPhone, items }, batchSummaries) {
+  const batchSummaryByThickness = new Map(batchSummaries.map((summary) => [summary.thicknessMm, summary]));
   const header = [
     "Customer Name",
     "Customer Email",
@@ -380,6 +424,8 @@ function buildQuoteCsv({ customerName, customerEmail, customerPhone, items }) {
     "Length (mm)",
     "Width (mm)",
     "Thickness (mm)",
+    "Required Plates",
+    "Base Sheet Price",
     "Corners",
     "Corner Radius (mm)",
     "Holes",
@@ -389,7 +435,8 @@ function buildQuoteCsv({ customerName, customerEmail, customerPhone, items }) {
     "Hole Y (mm)",
     "Hole Diameter (mm)",
     "Path Length (m)",
-    "Material Price",
+    "Material Cost",
+    "Material + Markup",
     "Milling Price",
     "Unit Price",
     "Total Price",
@@ -399,6 +446,8 @@ function buildQuoteCsv({ customerName, customerEmail, customerPhone, items }) {
   const rows = [];
 
   for (const { thicknessMm, items: batchItems } of groupItemsByThickness(items)) {
+    const batchSummary = batchSummaryByThickness.get(Number(thicknessMm));
+
     for (const item of batchItems) {
       rows.push([
         customerName,
@@ -411,6 +460,8 @@ function buildQuoteCsv({ customerName, customerEmail, customerPhone, items }) {
         item.values.lengthMm,
         item.values.widthMm,
         item.values.thicknessMm,
+        batchSummary?.sheetCount ?? "",
+        batchSummary ? formatEuro(batchSummary.stockSheetPriceEur) : "",
         item.values.roundedCorners ? "Rounded" : "Square",
         item.values.roundedCorners ? item.values.cornerRadiusMm : "",
         item.values.holeEnabled ? "Yes" : "No",
@@ -420,18 +471,20 @@ function buildQuoteCsv({ customerName, customerEmail, customerPhone, items }) {
         item.values.holeEnabled ? item.values.holeYmm : "",
         item.values.holeEnabled ? item.values.holeDiameterMm : "",
         formatDecimal(item.values.pricing.cutLengthM),
-        formatEuro(item.values.pricing.materialPriceEur),
-        formatEuro(item.values.pricing.millingPriceEur),
-        formatEuro(item.values.pricing.unitPriceEur),
-        formatEuro(item.values.pricing.totalPriceEur),
+        "",
+        "",
+        "",
+        "",
+        "",
         item.description,
       ]);
     }
 
-    rows.push(createCsvSubtotalRow(thicknessMm, batchItems));
+    rows.push(createCsvSubtotalRow(thicknessMm, batchSummary));
   }
 
-  rows.push(createCsvGrandTotalRow(items));
+  rows.push(createCsvOrderTransportRow());
+  rows.push(createCsvGrandTotalRow(batchSummaries));
 
   return [header, ...rows]
     .map((row) => row.map(escapeCsv).join(","))
@@ -539,39 +592,64 @@ function groupItemsByThickness(items) {
   }));
 }
 
-function buildThicknessSubtotalRow(thicknessMm, items, totalColumns) {
-  const totals = summarizeItems(items);
+function buildThicknessSubtotalRow(thicknessMm, summary, totalColumns) {
+  if (!summary) {
+    return "";
+  }
+
   return `
     <tr style="background:#eef4ff;font-weight:700;">
-      <td colspan="${totalColumns - 1}" style="border:1px solid #dbe4f0;padding:10px;text-align:right;">Subtotal ${escapeHtml(String(thicknessMm))} mm batch</td>
-      <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(totals.totalPriceEur))}</td>
+      <td colspan="12" style="border:1px solid #dbe4f0;padding:10px;text-align:right;">Subtotal ${escapeHtml(String(thicknessMm))} mm batch (${escapeHtml(String(summary.sheetCount))} required plates / DXF files)</td>
+      <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(summary.materialPriceEur))}</td>
+      <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(summary.materialPriceWithMarkupEur))}</td>
+      <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(summary.millingPriceEur))}</td>
+      <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(summary.unitPriceEur))}</td>
+      <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(summary.totalPriceEur))}</td>
     </tr>
   `;
 }
 
-function buildGrandTotalRow(items, totalColumns) {
-  const totals = summarizeItems(items);
+function buildOrderTransportRow(totalColumns) {
+  return `
+    <tr style="background:#f8fafc;font-weight:700;">
+      <td colspan="${totalColumns - 1}" style="border:1px solid #dbe4f0;padding:10px;text-align:right;">Transport / handling</td>
+      <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(formatEuro(TRANSPORT_HANDLING_PRICE_EUR))}</td>
+    </tr>
+  `;
+}
+
+function buildGrandTotalRow(batchSummaries, totalColumns) {
+  const totals = summarizeOrder(batchSummaries);
   return `
     <tr style="background:#dbeafe;font-weight:800;">
-      <td colspan="${totalColumns - 1}" style="border:1px solid #93c5fd;padding:10px;text-align:right;">Grand total</td>
-      <td style="border:1px solid #93c5fd;padding:10px;">${escapeHtml(formatEuro(totals.totalPriceEur))}</td>
+      <td colspan="12" style="border:1px solid #93c5fd;padding:10px;text-align:right;">Grand total</td>
+      <td style="border:1px solid #93c5fd;padding:10px;">${escapeHtml(formatEuro(totals.materialPriceEur))}</td>
+      <td style="border:1px solid #93c5fd;padding:10px;">${escapeHtml(formatEuro(totals.materialPriceWithMarkupEur))}</td>
+      <td style="border:1px solid #93c5fd;padding:10px;">${escapeHtml(formatEuro(totals.millingPriceEur))}</td>
+      <td style="border:1px solid #93c5fd;padding:10px;"></td>
+      <td style="border:1px solid #93c5fd;padding:10px;">${escapeHtml(formatEuro(totals.grandTotalEur))}</td>
     </tr>
   `;
 }
 
-function createCsvSubtotalRow(thicknessMm, items) {
-  const totals = summarizeItems(items);
+function createCsvSubtotalRow(thicknessMm, summary) {
+  if (!summary) {
+    return [];
+  }
+
   return [
     "",
     "",
     "",
     `Subtotal ${thicknessMm} mm batch`,
-    totals.quantity,
+    summary.quantity,
     "",
     "",
     "",
     "",
     thicknessMm,
+    summary.sheetCount,
+    formatEuro(summary.stockSheetPriceEur),
     "",
     "",
     "",
@@ -580,17 +658,51 @@ function createCsvSubtotalRow(thicknessMm, items) {
     "",
     "",
     "",
-    formatDecimal(totals.cutLengthM),
-    formatEuro(totals.materialPriceEur),
-    formatEuro(totals.millingPriceEur),
-    "",
-    formatEuro(totals.totalPriceEur),
+    formatDecimal(summary.cutLengthM),
+    formatEuro(summary.materialPriceEur),
+    formatEuro(summary.materialPriceWithMarkupEur),
+    formatEuro(summary.millingPriceEur),
+    formatEuro(summary.unitPriceEur),
+    formatEuro(summary.totalPriceEur),
     "",
   ];
 }
 
-function createCsvGrandTotalRow(items) {
-  const totals = summarizeItems(items);
+function createCsvOrderTransportRow() {
+  return [
+    "",
+    "",
+    "",
+    "Transport / handling",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    formatEuro(TRANSPORT_HANDLING_PRICE_EUR),
+    "",
+  ];
+}
+
+function createCsvGrandTotalRow(batchSummaries) {
+  const totals = summarizeOrder(batchSummaries);
   return [
     "",
     "",
@@ -602,6 +714,9 @@ function createCsvGrandTotalRow(items) {
     "",
     "",
     "",
+    totals.sheetCount,
+    "",
+    "",
     "",
     "",
     "",
@@ -612,28 +727,205 @@ function createCsvGrandTotalRow(items) {
     "",
     formatDecimal(totals.cutLengthM),
     formatEuro(totals.materialPriceEur),
+    formatEuro(totals.materialPriceWithMarkupEur),
     formatEuro(totals.millingPriceEur),
     "",
-    formatEuro(totals.totalPriceEur),
+    formatEuro(totals.grandTotalEur),
     "",
   ];
 }
 
-function summarizeItems(items) {
-  return items.reduce((totals, item) => ({
-    quantity: totals.quantity + Number(item.values.quantity || 0),
-    cutLengthM: totals.cutLengthM + Number(item.values.pricing.cutLengthM || 0) * Number(item.values.quantity || 1),
-    materialPriceEur: totals.materialPriceEur + Number(item.values.pricing.materialPriceEur || 0) * Number(item.values.quantity || 1),
-    millingPriceEur: totals.millingPriceEur + Number(item.values.pricing.millingPriceEur || 0) * Number(item.values.quantity || 1),
-    totalPriceEur: totals.totalPriceEur + Number(item.values.pricing.totalPriceEur || 0),
+function createBatchSummaries(items, sheetLayoutPlan) {
+  const quantityByThickness = new Map();
+  const cutLengthByThickness = new Map();
+
+  for (const item of items) {
+    const thicknessMm = Number(item.values.thicknessMm);
+    quantityByThickness.set(thicknessMm, (quantityByThickness.get(thicknessMm) || 0) + Number(item.values.quantity || 0));
+    cutLengthByThickness.set(
+      thicknessMm,
+      (cutLengthByThickness.get(thicknessMm) || 0) + (Number(item.values.pricing.cutLengthM || 0) * Number(item.values.quantity || 1))
+    );
+  }
+
+  return sheetLayoutPlan
+    .map((group) => {
+      const thicknessMm = Number(group.items[0]?.values?.thicknessMm || 0);
+      const stockSheetPriceEur = Number(group.items[0]?.values?.pricing?.stockSheetPriceEur || 0);
+      const sheetCount = Number(group.sheetCount || 0);
+      const materialPriceEur = roundCurrency(sheetCount * stockSheetPriceEur);
+      const materialPriceWithMarkupEur = roundCurrency(materialPriceEur * 1.5);
+      const millingPriceEur = roundCurrency(sheetCount * 100);
+      const totalPriceEur = roundCurrency(materialPriceWithMarkupEur + millingPriceEur);
+
+      return {
+        thicknessMm,
+        quantity: quantityByThickness.get(thicknessMm) || 0,
+        cutLengthM: cutLengthByThickness.get(thicknessMm) || 0,
+        stockSheetPriceEur,
+        sheetCount,
+        materialPriceEur,
+        materialPriceWithMarkupEur,
+        millingPriceEur,
+        unitPriceEur: sheetCount > 0 ? roundCurrency(totalPriceEur / sheetCount) : 0,
+        totalPriceEur,
+      };
+    })
+    .sort((left, right) => left.thicknessMm - right.thicknessMm);
+}
+
+function summarizeOrder(batchSummaries) {
+  const totals = batchSummaries.reduce((accumulator, summary) => ({
+    quantity: accumulator.quantity + summary.quantity,
+    sheetCount: accumulator.sheetCount + summary.sheetCount,
+    cutLengthM: accumulator.cutLengthM + summary.cutLengthM,
+    materialPriceEur: accumulator.materialPriceEur + summary.materialPriceEur,
+    materialPriceWithMarkupEur: accumulator.materialPriceWithMarkupEur + summary.materialPriceWithMarkupEur,
+    millingPriceEur: accumulator.millingPriceEur + summary.millingPriceEur,
+    totalPriceEur: accumulator.totalPriceEur + summary.totalPriceEur,
   }), {
     quantity: 0,
+    sheetCount: 0,
     cutLengthM: 0,
     materialPriceEur: 0,
+    materialPriceWithMarkupEur: 0,
     millingPriceEur: 0,
     totalPriceEur: 0,
   });
+
+  return {
+    ...totals,
+    transportHandlingEur: batchSummaries.length > 0 ? TRANSPORT_HANDLING_PRICE_EUR : 0,
+    grandTotalEur: totals.totalPriceEur + (batchSummaries.length > 0 ? TRANSPORT_HANDLING_PRICE_EUR : 0),
+  };
 }
+
+function buildThicknessBasePriceRows(batchSummaries) {
+  return batchSummaries.flatMap((summary) => ([
+    [`Base sheet price ${summary.thicknessMm} mm`, formatEuro(summary.stockSheetPriceEur)],
+    [`Required plates ${summary.thicknessMm} mm`, String(summary.sheetCount)],
+  ]));
+}
+
+function buildBatchSummaryLines(batchSummaries) {
+  return batchSummaries.flatMap((summary) => [
+    `${summary.thicknessMm} mm batch: ${summary.sheetCount} required plates / DXF files`,
+    `Base sheet: ${formatEuro(summary.stockSheetPriceEur)}, material cost: ${formatEuro(summary.materialPriceEur)}, material + markup: ${formatEuro(summary.materialPriceWithMarkupEur)}, milling: ${formatEuro(summary.millingPriceEur)}, batch total: ${formatEuro(summary.totalPriceEur)}`,
+    "",
+  ]);
+}
+
+function roundCurrency(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function createZipArchiveBase64(files) {
+  const normalizedFiles = files.map((file) => ({
+    filename: String(file.filename || "file.txt"),
+    data: Buffer.isBuffer(file.content) ? file.content : Buffer.from(String(file.content || ""), "utf8"),
+  }));
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const file of normalizedFiles) {
+    const filenameBuffer = Buffer.from(file.filename, "utf8");
+    const crc = crc32(file.data);
+    const dosDateTime = getDosDateTime(new Date());
+
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(dosDateTime.time, 10);
+    localHeader.writeUInt16LE(dosDateTime.date, 12);
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(file.data.length, 18);
+    localHeader.writeUInt32LE(file.data.length, 22);
+    localHeader.writeUInt16LE(filenameBuffer.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+
+    const localPart = Buffer.concat([localHeader, filenameBuffer, file.data]);
+    localParts.push(localPart);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(dosDateTime.time, 12);
+    centralHeader.writeUInt16LE(dosDateTime.date, 14);
+    centralHeader.writeUInt32LE(crc, 16);
+    centralHeader.writeUInt32LE(file.data.length, 20);
+    centralHeader.writeUInt32LE(file.data.length, 24);
+    centralHeader.writeUInt16LE(filenameBuffer.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+
+    centralParts.push(Buffer.concat([centralHeader, filenameBuffer]));
+    offset += localPart.length;
+  }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const centralDirectoryOffset = offset;
+  const endOfCentralDirectory = Buffer.alloc(22);
+  endOfCentralDirectory.writeUInt32LE(0x06054b50, 0);
+  endOfCentralDirectory.writeUInt16LE(0, 4);
+  endOfCentralDirectory.writeUInt16LE(0, 6);
+  endOfCentralDirectory.writeUInt16LE(normalizedFiles.length, 8);
+  endOfCentralDirectory.writeUInt16LE(normalizedFiles.length, 10);
+  endOfCentralDirectory.writeUInt32LE(centralDirectory.length, 12);
+  endOfCentralDirectory.writeUInt32LE(centralDirectoryOffset, 16);
+  endOfCentralDirectory.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localParts, centralDirectory, endOfCentralDirectory]).toString("base64");
+}
+
+function getDosDateTime(date) {
+  const year = Math.max(1980, date.getFullYear());
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const seconds = Math.floor(date.getSeconds() / 2);
+
+  return {
+    time: (hours << 11) | (minutes << 5) | seconds,
+    date: ((year - 1980) << 9) | (month << 5) | day,
+  };
+}
+
+function crc32(buffer) {
+  let crc = 0 ^ -1;
+
+  for (let index = 0; index < buffer.length; index += 1) {
+    crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ buffer[index]) & 0xff];
+  }
+
+  return (crc ^ -1) >>> 0;
+}
+
+const CRC32_TABLE = (() => {
+  const table = new Array(256);
+
+  for (let index = 0; index < 256; index += 1) {
+    let crc = index;
+
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 1) ? (0xedb88320 ^ (crc >>> 1)) : (crc >>> 1);
+    }
+
+    table[index] = crc >>> 0;
+  }
+
+  return table;
+})();
 
 
 function isUserInputError(error) {
@@ -644,7 +936,7 @@ function isUserInputError(error) {
   );
 }
 
-function getEmailConfigurationError() {
+function getEmailConfigurationError(quoteToEmail = QUOTE_TO_EMAIL) {
   const missingKeys = [];
 
   if (!RESEND_API_KEY) {
@@ -659,7 +951,7 @@ function getEmailConfigurationError() {
     return `Email sending is not configured yet. Add ${missingKeys.join(" and ")} to the server environment.`;
   }
 
-  if (!isValidEmail(QUOTE_TO_EMAIL)) {
+  if (!isValidEmail(quoteToEmail)) {
     return "QUOTE_TO_EMAIL is not a valid email address.";
   }
 

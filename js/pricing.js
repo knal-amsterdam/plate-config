@@ -5,8 +5,9 @@ export const STOCK_SHEET_WIDTH_MM = 1200;
 export const SHEET_LAYOUT_MARGIN_MM = 10;
 export const SHEET_LAYOUT_GAP_MM = 10;
 export const MINIMUM_PLATE_PRICE_EUR = 25;
-export const MACHINE_SETUP_PRICE_EUR = 12;
-export const MACHINE_PRICE_PER_METER_EUR = 4.5;
+export const MACHINE_SETUP_PRICE_EUR = 100;
+export const TRANSPORT_HANDLING_PRICE_EUR = 100;
+export const MATERIAL_MARKUP_MULTIPLIER = 1.5;
 export const HOLE_PIERCE_PRICE_EUR = 0.8;
 export const ROUNDED_CORNER_COMPLEXITY_PRICE_EUR = 2.5;
 
@@ -17,12 +18,16 @@ export const MATERIALS = [
     sheetLengthMm: STOCK_SHEET_LENGTH_MM,
     sheetWidthMm: STOCK_SHEET_WIDTH_MM,
     priceByThickness: {
-      6: 52,
-      9: 58,
-      12: 66,
-      15: 74,
-      18: 86,
-      21: 96,
+      6: 95.97,
+      9: 67.99,
+      12: 93.99,
+      15: 110.2,
+      18: 145,
+      21: 143.3,
+      24: 184.68,
+      27: 262.61,
+      30: 233.32,
+      40: 317.12,
     },
   },
 ];
@@ -79,8 +84,11 @@ export function calculatePlatePricing({
   const stockSheetPriceEur = material.priceByThickness[String(thicknessMm)];
   const sheetAreaMm2 = material.sheetLengthMm * material.sheetWidthMm;
   const plateAreaMm2 = lengthMm * widthMm;
+  const fullSheetsNeeded = normalizedQuantity;
   const sheetShare = plateAreaMm2 / sheetAreaMm2;
-  const materialPriceEur = roundCurrency(sheetShare * stockSheetPriceEur);
+  const materialPriceEur = roundCurrency(stockSheetPriceEur * fullSheetsNeeded);
+  const materialPriceWithMarkupEur = roundCurrency(materialPriceEur * MATERIAL_MARKUP_MULTIPLIER);
+  const materialMarkupEur = roundCurrency(materialPriceWithMarkupEur - materialPriceEur);
   const cutLengthMm = getPlateCutLengthMm({
     lengthMm,
     widthMm,
@@ -95,10 +103,13 @@ export function calculatePlatePricing({
   const holeCount = holeEnabled ? Math.max(1, Math.floor(holeCountX)) * Math.max(1, Math.floor(holeCountY)) : 0;
   const roundedCornersPriceEur = roundedCorners ? 4 * ROUNDED_CORNER_COMPLEXITY_PRICE_EUR : 0;
   const holePatternPriceEur = holeCount * HOLE_PIERCE_PRICE_EUR;
-  const millingPriceEur = roundCurrency(MACHINE_SETUP_PRICE_EUR + (cutLengthM * MACHINE_PRICE_PER_METER_EUR) + roundedCornersPriceEur + holePatternPriceEur);
-  const subtotalEur = materialPriceEur + millingPriceEur;
-  const unitPriceEur = Math.max(MINIMUM_PLATE_PRICE_EUR, roundCurrency(subtotalEur));
-  const totalPriceEur = roundCurrency(unitPriceEur * normalizedQuantity);
+  const millingPriceEur = roundCurrency(MACHINE_SETUP_PRICE_EUR * fullSheetsNeeded);
+  const unitPriceEur = Math.max(
+    MINIMUM_PLATE_PRICE_EUR,
+    roundCurrency((stockSheetPriceEur * MATERIAL_MARKUP_MULTIPLIER) + MACHINE_SETUP_PRICE_EUR)
+  );
+  const subtotalEur = materialPriceWithMarkupEur + millingPriceEur;
+  const totalPriceEur = roundCurrency(subtotalEur);
 
   return {
     materialKey: material.key,
@@ -107,16 +118,19 @@ export function calculatePlatePricing({
     stockSheetLengthMm: material.sheetLengthMm,
     stockSheetWidthMm: material.sheetWidthMm,
     stockSheetPriceEur,
+    fullSheetsNeeded,
     plateAreaMm2,
     plateAreaM2: plateAreaMm2 / 1_000_000,
     sheetShare,
     materialPriceEur,
+    materialMarkupEur,
+    materialPriceWithMarkupEur,
     cutLengthMm,
     cutLengthM,
     millingPriceEur,
     roundedCornersPriceEur,
     holePatternPriceEur,
-    minimumChargeApplied: unitPriceEur > subtotalEur,
+    minimumChargeApplied: false,
     unitPriceEur,
     totalPriceEur,
   };

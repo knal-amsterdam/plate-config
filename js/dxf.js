@@ -10,17 +10,34 @@ export function createSheetLayoutDxfs(items, {
   marginMm = 10,
   gapMm = 10,
 } = {}) {
-  const groups = groupItemsForSheetLayouts(items);
+  const groups = createSheetLayoutPlan(items, { sheetLengthMm, sheetWidthMm, marginMm, gapMm });
 
   return groups.flatMap((group) => {
-    const expandedItems = expandItemsByQuantity(group.items);
-    const sheets = packItemsOnSheets(expandedItems, { sheetLengthMm, sheetWidthMm, marginMm, gapMm });
-
-    return sheets.map((sheet, index) => ({
+    return group.sheets.map((sheet, index) => ({
       filename: `sheet-layout-${slugify(group.groupLabel)}-${index + 1}.dxf`,
       content: createSheetLayoutDxf(sheet, { sheetLengthMm, sheetWidthMm }),
       placements: sheet.placements,
     }));
+  });
+}
+
+export function createSheetLayoutPlan(items, {
+  sheetLengthMm = 2400,
+  sheetWidthMm = 1200,
+  marginMm = 10,
+  gapMm = 10,
+} = {}) {
+  const groups = groupItemsForSheetLayouts(items);
+
+  return groups.map((group) => {
+    const expandedItems = expandItemsByQuantity(group.items);
+    const sheets = packItemsOnSheets(expandedItems, { sheetLengthMm, sheetWidthMm, marginMm, gapMm });
+
+    return {
+      ...group,
+      sheets,
+      sheetCount: sheets.length,
+    };
   });
 }
 

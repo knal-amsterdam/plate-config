@@ -5,9 +5,15 @@ export function createPreviewController({ modelViewer, emptyState }) {
     cleanup();
 
     currentObjectUrl = URL.createObjectURL(glbBlob);
+    modelViewer.cameraTarget = "0m 0m 0m";
+    modelViewer.cameraOrbit = "45deg 62deg auto";
     modelViewer.src = currentObjectUrl;
     modelViewer.dataset.loaded = "true";
     emptyState.hidden = true;
+
+    if (typeof modelViewer.jumpCameraToGoal === "function") {
+      modelViewer.jumpCameraToGoal();
+    }
   }
 
   function reset() {

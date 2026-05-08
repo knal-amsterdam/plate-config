@@ -630,6 +630,7 @@ function createPricingSummary(values) {
     formattedTotalPrice: formatEuro(pricing.totalPriceEur),
     formattedUnitPrice: formatEuro(pricing.unitPriceEur),
     formattedMaterialPrice: formatEuro(pricing.materialPriceEur),
+    formattedMaterialPriceWithMarkup: formatEuro(pricing.materialPriceWithMarkupEur),
   };
 }
 
