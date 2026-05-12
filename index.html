@@ -47,36 +47,66 @@
 
             <div class="accordion-step__panel" id="step-panel-1" role="region" aria-labelledby="step-button-1">
               <div class="field-grid">
-                <label class="field" for="material-variant-selector">
+                <label class="field" for="material-selector">
                   <span>Material</span>
                 </label>
-                <div id="material-variant-selector" class="material-selector" role="radiogroup" aria-label="Birch multiplex variant">
+                <div id="material-selector" class="material-selector" role="radiogroup" aria-label="Material type">
                   <button
                     class="material-card"
                     type="button"
-                    data-variant-key="multiplex-b-bb"
-                    data-variant-label="Multiplex B/BB"
+                    data-material-key="multiplex-b-bb"
                     data-selected="true"
                     aria-pressed="true"
                   >
-                    <img class="material-card__image" src="./multiplex-berken_multiplex_b_bb-topshot.jpg" alt="Multiplex B/BB">
                     <span class="material-card__title">Multiplex B/BB</span>
                   </button>
                   <button
                     class="material-card"
                     type="button"
-                    data-variant-key="multiplex-cp-cp"
-                    data-variant-label="Multiplex CP/CP"
+                    data-material-key="multiplex-cp-cp"
                     data-selected="false"
                     aria-pressed="false"
                   >
-                    <img class="material-card__image" src="./multiplex-berken_multiplex_cp_cp-topshot.jpg" alt="Multiplex CP/CP">
                     <span class="material-card__title">Multiplex CP/CP</span>
                   </button>
+                  <button
+                    class="material-card"
+                    type="button"
+                    data-material-key="okoume"
+                    data-selected="false"
+                    aria-pressed="false"
+                  >
+                    <span class="material-card__title">Okoumé</span>
+                  </button>
+                  <button
+                    class="material-card"
+                    type="button"
+                    data-material-key="radiata"
+                    data-selected="false"
+                    aria-pressed="false"
+                  >
+                    <span class="material-card__title">Radiata</span>
+                  </button>
+                  <button
+                    class="material-card"
+                    type="button"
+                    data-material-key="berken"
+                    data-selected="false"
+                    aria-pressed="false"
+                  >
+                    <span class="material-card__title">Berken</span>
+                  </button>
+                  <button
+                    class="material-card"
+                    type="button"
+                    data-material-key="eucalyptus"
+                    data-selected="false"
+                    aria-pressed="false"
+                  >
+                    <span class="material-card__title">Eucalyptus</span>
+                  </button>
                 </div>
-                <input id="material-key" name="materialKey" type="hidden" value="birch-multiplex">
-                <input id="material-variant-key" name="materialVariantKey" type="hidden" value="multiplex-b-bb">
-                <input id="material-variant-label" name="materialVariantLabel" type="hidden" value="Multiplex B/BB">
+                <input id="material-key" name="materialKey" type="hidden" value="multiplex-b-bb">
               </div>
             </div>
           </section>
@@ -85,39 +115,35 @@
             <button class="accordion-step__header" id="step-button-2" type="button" aria-expanded="false" aria-controls="step-panel-2">
               <span class="accordion-step__meta">Step 2 of 6</span>
               <span class="accordion-step__title">Size</span>
+              <span class="accordion-step__hint">Min 20×20 mm — Max 2420×1200 mm</span>
             </button>
 
             <div class="accordion-step__panel" id="step-panel-2" role="region" aria-labelledby="step-button-2" hidden>
               <div class="field-grid field-grid--two">
                 <label class="field">
                   <span>Length (mm)</span>
-                  <input id="length-mm" name="lengthMm" type="number" min="1" max="2400" step="1" value="1000" required>
+                  <input id="length-mm" name="lengthMm" type="number" min="20" max="2420" step="1" value="1000" required>
                 </label>
 
                 <label class="field">
                   <span>Width (mm)</span>
-                  <input id="width-mm" name="widthMm" type="number" min="1" max="1200" step="1" value="500" required>
+                  <input id="width-mm" name="widthMm" type="number" min="20" max="1200" step="1" value="500" required>
                 </label>
 
                 <label class="field">
                   <span>Thickness (mm)</span>
                   <select id="thickness-mm" name="thicknessMm">
-                    <option value="6">6 mm</option>
-                    <option value="9">9 mm</option>
-                    <option value="12">12 mm</option>
-                    <option value="15">15 mm</option>
-                    <option value="18" selected>18 mm</option>
-                    <option value="21">21 mm</option>
-                    <option value="24">24 mm</option>
-                    <option value="27">27 mm</option>
-                    <option value="30">30 mm</option>
-                    <option value="40">40 mm</option>
                   </select>
                 </label>
 
                 <label class="field">
                   <span>Quantity</span>
                   <input id="quantity" name="quantity" type="number" min="1" step="1" value="1" required>
+                </label>
+
+                <label class="field field--checkbox">
+                  <input id="edge-treatment" name="edgeTreatment" type="checkbox" checked>
+                  <span>Edge treatment (3.2 mm)</span>
                 </label>
               </div>
             </div>
@@ -248,9 +274,14 @@
                   <div class="field-group" id="hole-size-fields" data-disabled="true">
                     <label class="field field--full">
                         <span>Hole diameter (mm)</span>
-                      <input id="hole-diameter-mm" name="holeDiameterMm" type="number" min="1" step="1" value="35" disabled>
+                      <input id="hole-diameter-mm" name="holeDiameterMm" type="number" min="1" step="0.1" value="5" disabled>
                     </label>
+                    <p class="field-hint">Standard: 5 mm. Other diameters possible — final result may vary.</p>
                   </div>
+                </div>
+
+                <div class="field-notice" id="hole-warning">
+                  <p>Parts with holes require extra finishing inspection. Edge quality around holes depends on material and diameter.</p>
                 </div>
               </div>
             </div>
@@ -316,6 +347,14 @@
                   <label class="field field--full">
                     <span>Phone</span>
                     <input id="customer-phone" name="customerPhone" type="tel" placeholder="+31 6 12345678">
+                  </label>
+
+                  <label class="field field--full">
+                    <span>Delivery</span>
+                    <select id="customer-delivery" name="customerDelivery">
+                      <option value="collect" selected>Collect (pick up)</option>
+                      <option value="shipment">Shipment on request</option>
+                    </select>
                   </label>
 
                   <label class="field field--full">

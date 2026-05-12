@@ -11,6 +11,8 @@ export async function createPlywoodPlateModel({
   widthMm,
   thicknessMm,
   quantity = 1,
+  edgeTreatment = true,
+  edgeTreatmentMm = 3.2,
   roundedCorners,
   cornerRadiusMm,
   holeEnabled,
@@ -36,11 +38,14 @@ export async function createPlywoodPlateModel({
   }
 
   const scene = new THREE.Scene();
+  const visualBevelMm = edgeTreatment ? Math.max(edgeTreatmentMm, thicknessMm * 0.15) : 0;
+  const bevelSizeM = visualBevelMm * MM_TO_METERS;
   const geometry = createPlateGeometry({
     lengthM,
     widthM,
     thicknessM,
     cornerRadiusM: clampedCornerRadiusMm * MM_TO_METERS,
+    bevelSizeM,
     holeEnabled,
     holeXmm,
     holeYmm,
@@ -109,6 +114,7 @@ function createPlateGeometry({
   widthM,
   thicknessM,
   cornerRadiusM,
+  bevelSizeM,
   holeEnabled,
   holeXmm,
   holeYmm,
@@ -116,7 +122,7 @@ function createPlateGeometry({
   holeCountY,
   holeDiameterMm,
 }) {
-  if (cornerRadiusM <= 0 && !holeEnabled) {
+  if (cornerRadiusM <= 0 && !holeEnabled && bevelSizeM <= 0) {
     return new THREE.BoxGeometry(lengthM, thicknessM, widthM);
   }
 
@@ -125,6 +131,7 @@ function createPlateGeometry({
     widthM,
     thicknessM,
     cornerRadiusM,
+    bevelSizeM,
     holeEnabled,
     holeXmm,
     holeYmm,
@@ -139,6 +146,7 @@ function createExtrudedPlateGeometry({
   widthM,
   thicknessM,
   cornerRadiusM,
+  bevelSizeM = 0,
   holeEnabled,
   holeXmm,
   holeYmm,
@@ -184,9 +192,13 @@ function createExtrudedPlateGeometry({
     }
   }
 
+  const useBevel = bevelSizeM > 0 && thicknessM > bevelSizeM * 2;
   const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: thicknessM,
-    bevelEnabled: false,
+    depth: useBevel ? thicknessM - bevelSizeM * 2 : thicknessM,
+    bevelEnabled: useBevel,
+    bevelThickness: useBevel ? bevelSizeM : 0,
+    bevelSize: useBevel ? bevelSizeM : 0,
+    bevelSegments: useBevel ? 3 : 0,
     curveSegments: 24,
   });
 

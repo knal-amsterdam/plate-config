@@ -155,6 +155,18 @@ button {
   color: var(--blue);
 }
 
+.accordion-step__hint {
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--muted, #6b7280);
+  letter-spacing: 0;
+  display: none;
+}
+
+.accordion-step[data-expanded="true"] .accordion-step__hint {
+  display: block;
+}
+
 .accordion-step__description {
   max-width: 34rem;
   font-size: 0.94rem;
@@ -251,6 +263,46 @@ button {
 .field {
   display: grid;
   gap: 0.45rem;
+}
+
+.field-hint {
+  font-size: 0.82rem;
+  color: var(--muted, #6b7280);
+  margin: 0;
+}
+
+.field-hint--full {
+  grid-column: 1 / -1;
+}
+
+.field-notice {
+  padding: 0.75rem 1rem;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 0;
+}
+
+.field-notice p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text, #1a1a2e);
+}
+
+.field--checkbox {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+
+.field--checkbox input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  appearance: checkbox;
+  accent-color: var(--accent, #06f);
+  cursor: pointer;
 }
 
 .choice-selector {
@@ -717,6 +769,16 @@ button {
 .overview-action-button:hover {
   transform: translateY(-1px);
   background: rgba(0, 102, 255, 0.14);
+}
+
+.overview-action-button--delete {
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.2);
+}
+
+.overview-action-button--delete:hover {
+  background: rgba(220, 38, 38, 0.14);
 }
 
 .quote-item {
