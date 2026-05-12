@@ -8,13 +8,12 @@ export function getDomReferences() {
     closeControlsButton: document.querySelector("#close-controls-button"),
     mobileBackdrop: document.querySelector("#mobile-backdrop"),
     materialInput: document.querySelector("#material-key"),
-    materialVariantKeyInput: document.querySelector("#material-variant-key"),
-    materialVariantLabelInput: document.querySelector("#material-variant-label"),
     materialCards: Array.from(document.querySelectorAll(".material-card")),
     lengthInput: document.querySelector("#length-mm"),
     widthInput: document.querySelector("#width-mm"),
     thicknessInput: document.querySelector("#thickness-mm"),
     quantityInput: document.querySelector("#quantity"),
+    edgeTreatmentInput: document.querySelector("#edge-treatment"),
     roundedCornersInput: document.querySelector("#rounded-corners"),
     cornerChoiceCards: Array.from(document.querySelectorAll('[data-choice-group="corners"]')),
     cornerRadiusInput: document.querySelector("#corner-radius-mm"),
@@ -49,6 +48,7 @@ export function getDomReferences() {
     customerNameInput: document.querySelector("#customer-name"),
     customerEmailInput: document.querySelector("#customer-email"),
     customerPhoneInput: document.querySelector("#customer-phone"),
+    customerDeliveryInput: document.querySelector("#customer-delivery"),
     customerNoteInput: document.querySelector("#customer-note"),
     statusMessage: document.querySelector("#status-message"),
     modelViewer: document.querySelector("#model-viewer"),
@@ -69,12 +69,11 @@ export function isMobileViewport() {
 
 export function readFormValues({
   materialInput,
-  materialVariantKeyInput,
-  materialVariantLabelInput,
   lengthInput,
   widthInput,
   thicknessInput,
   quantityInput,
+  edgeTreatmentInput,
   roundedCornersInput,
   cornerRadiusInput,
   holeEnabledInput,
@@ -84,18 +83,14 @@ export function readFormValues({
   holeCountYInput,
   holeDiameterInput,
 }) {
-  const selectedMaterialCard = Array.from(document.querySelectorAll(".material-card")).find(
-    (card) => card.dataset.selected === "true"
-  );
-
   return {
-    materialKey: materialInput?.value || "birch-multiplex",
-    materialVariantKey: materialVariantKeyInput?.value || selectedMaterialCard?.dataset.variantKey || "",
-    materialVariantLabel: materialVariantLabelInput?.value || selectedMaterialCard?.dataset.variantLabel || "",
+    materialKey: materialInput?.value || "multiplex-b-bb",
     lengthMm: Number(lengthInput.value),
     widthMm: Number(widthInput.value),
     thicknessMm: Number(thicknessInput.value),
     quantity: Number(quantityInput.value),
+    edgeTreatment: edgeTreatmentInput.checked,
+    edgeTreatmentMm: edgeTreatmentInput.checked ? 3.2 : 0,
     roundedCorners: roundedCornersInput.checked,
     cornerRadiusMm: Number(cornerRadiusInput.value),
     holeEnabled: holeEnabledInput.checked,
@@ -121,9 +116,7 @@ export function updateMetrics({
   metricCornerRadius,
   metricHole,
 }, dimensions) {
-  metricMaterial.textContent = dimensions.materialVariantLabel
-    ? `Material ${dimensions.materialLabel} (${dimensions.materialVariantLabel})`
-    : `Material ${dimensions.materialLabel}`;
+  metricMaterial.textContent = `Material ${dimensions.materialLabel}`;
   metricLength.textContent = `Length ${dimensions.lengthMm.toFixed(0)} mm`;
   metricWidth.textContent = `Width ${dimensions.widthMm.toFixed(0)} mm`;
   metricThickness.textContent = `Thickness ${dimensions.thicknessMm.toFixed(0)} mm`;
@@ -199,11 +192,12 @@ export function renderQuoteItems({ quoteRequestButton, quoteCountBadge }, items)
   quoteRequestButton.setAttribute("aria-disabled", "false");
 }
 
-export function readContactValues({ customerNameInput, customerEmailInput, customerPhoneInput, customerNoteInput }) {
+export function readContactValues({ customerNameInput, customerEmailInput, customerPhoneInput, customerDeliveryInput, customerNoteInput }) {
   return {
     customerName: customerNameInput.value.trim(),
     customerEmail: customerEmailInput.value.trim(),
     customerPhone: customerPhoneInput.value.trim(),
+    customerDelivery: customerDeliveryInput?.value || "collect",
     customerNote: customerNoteInput.value.trim(),
   };
 }
@@ -280,6 +274,7 @@ export function renderOverviewTable({
       createTableCell(holesText),
       createTableCell(createSaveButton()),
       createTableCell(createLoadButton())
+      // createTableCell(createDeleteButton())
     );
 
     overviewTableBody.append(row);
@@ -355,11 +350,11 @@ function createEditorStack(label, controls) {
 }
 
 function createMaterialEditor(values, materialCards = []) {
-  const variantOptions = materialCards.map((card) => ({
-    value: card.dataset.variantKey || "",
-    label: card.dataset.variantLabel || "",
+  const materialOptions = materialCards.map((card) => ({
+    value: card.dataset.materialKey || "",
+    label: card.textContent?.trim() || card.dataset.materialKey || "",
   }));
-  return createSelect("materialVariantKey", values.materialVariantKey, variantOptions, "Material variant");
+  return createSelect("materialKey", values.materialKey, materialOptions, "Material");
 }
 
 function createThicknessEditor(values, thicknessInput) {
@@ -394,16 +389,40 @@ function createSaveButton() {
   return button;
 }
 
-export function syncMaterialCards({ materialCards, materialVariantKeyInput, materialVariantLabelInput }, nextVariantKey) {
+// function createDeleteButton() {
+//   const button = document.createElement("button");
+//   button.className = "overview-action-button overview-action-button--delete";
+//   button.type = "button";
+//   button.dataset.action = "delete-plank";
+//   button.textContent = "Delete";
+//   return button;
+// }
+
+export function syncMaterialCards({ materialCards, materialInput }, nextMaterialKey) {
   for (const card of materialCards) {
-    const isSelected = card.dataset.variantKey === nextVariantKey;
+    const isSelected = card.dataset.materialKey === nextMaterialKey;
     card.dataset.selected = String(isSelected);
     card.setAttribute("aria-pressed", String(isSelected));
+  }
+  materialInput.value = nextMaterialKey;
+}
 
-    if (isSelected) {
-      materialVariantKeyInput.value = card.dataset.variantKey || "";
-      materialVariantLabelInput.value = card.dataset.variantLabel || "";
-    }
+export function syncThicknessOptions({ thicknessInput }, material) {
+  const currentValue = thicknessInput.value;
+  thicknessInput.innerHTML = "";
+
+  const thicknesses = Object.keys(material.priceByThickness).map(Number).sort((a, b) => a - b);
+  for (const thickness of thicknesses) {
+    const option = document.createElement("option");
+    option.value = String(thickness);
+    option.textContent = `${thickness} mm`;
+    thicknessInput.append(option);
+  }
+
+  if (thicknesses.includes(Number(currentValue))) {
+    thicknessInput.value = currentValue;
+  } else {
+    thicknessInput.value = String(thicknesses[thicknesses.length - 1] || "");
   }
 }
 

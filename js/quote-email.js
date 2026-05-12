@@ -77,7 +77,7 @@ export async function sendQuoteRequestEmails({
     text: confirmationMessage.text,
     html: confirmationMessage.html,
     replyTo: quoteToEmail,
-    attachments,
+    attachments: [],
     nodeEnv,
   });
 
@@ -92,6 +92,7 @@ export function normalizeQuotePayload(payload) {
   const customerName = String(payload?.customerName || "").trim();
   const customerEmail = String(payload?.customerEmail || "").trim();
   const customerPhone = String(payload?.customerPhone || "").trim();
+  const customerDelivery = String(payload?.customerDelivery || "collect").trim();
   const customerNote = String(payload?.customerNote || "").trim();
   const items = Array.isArray(payload?.items) ? payload.items : [];
 
@@ -111,6 +112,7 @@ export function normalizeQuotePayload(payload) {
     customerName,
     customerEmail,
     customerPhone,
+    customerDelivery,
     customerNote,
     items: items.map((item, index) => normalizeQuoteItem(item, index)),
   };
@@ -200,12 +202,10 @@ async function sendResendEmail({
 
 function normalizeQuoteItem(item, index) {
   const values = item?.values ?? {};
-  const materialKey = String(values.materialKey || "birch-multiplex");
+  const materialKey = String(values.materialKey || "multiplex-b-bb");
   const normalizedValues = {
     materialKey,
     materialLabel: String(values.materialLabel || getMaterialByKey(materialKey).label),
-    materialVariantKey: String(values.materialVariantKey || "multiplex-b-bb"),
-    materialVariantLabel: String(values.materialVariantLabel || "Multiplex B/BB"),
     quantity: Math.max(1, Math.floor(Number(values.quantity || 1))),
     lengthMm: toPositiveNumber(values.lengthMm, "length"),
     widthMm: toPositiveNumber(values.widthMm, "width"),
@@ -230,11 +230,13 @@ function normalizeQuoteItem(item, index) {
   };
 }
 
-function buildInternalEmail({ customerName, customerEmail, customerPhone, customerNote, items }, batchSummaries) {
+function buildInternalEmail({ customerName, customerEmail, customerPhone, customerDelivery, customerNote, items }, batchSummaries) {
+  const deliveryLabel = customerDelivery === "shipment" ? "Shipment on request" : "Collect (pick up)";
   const detailRows = [
     ["Name", customerName],
     ["Email", customerEmail],
     ["Phone", customerPhone || "-"],
+    ["Delivery", deliveryLabel],
     ["Note", customerNote || "-"],
     ["Sheet layout", `${STOCK_SHEET_LENGTH_MM} x ${STOCK_SHEET_WIDTH_MM} mm`],
     ["Sheet margin / gap", `${SHEET_LAYOUT_MARGIN_MM} mm / ${SHEET_LAYOUT_GAP_MM} mm`],
@@ -248,6 +250,7 @@ function buildInternalEmail({ customerName, customerEmail, customerPhone, custom
     `Name: ${customerName}`,
     `Email: ${customerEmail}`,
     `Phone: ${customerPhone || "-"}`,
+    `Delivery: ${deliveryLabel}`,
     `Note: ${customerNote || "-"}`,
     `Sheet layout: ${STOCK_SHEET_LENGTH_MM} x ${STOCK_SHEET_WIDTH_MM} mm, margin ${SHEET_LAYOUT_MARGIN_MM} mm, gap ${SHEET_LAYOUT_GAP_MM} mm`,
     ...buildThicknessBasePriceRows(batchSummaries).map(([label, value]) => `${label}: ${value}`),
@@ -277,22 +280,17 @@ function buildInternalEmail({ customerName, customerEmail, customerPhone, custom
   };
 }
 
-function buildConfirmationEmail({ customerName, customerNote, items }, batchSummaries) {
+function buildConfirmationEmail({ customerName, customerDelivery, customerNote, items }) {
+  const deliveryLabel = customerDelivery === "shipment" ? "Shipment on request" : "Collect (pick up)";
   const lines = [
     `Hi ${customerName},`,
     "",
-    "Thanks for your quote request. We received the plank set below and will get back to you as soon as possible.",
-    ...(customerNote ? [`Your note: ${customerNote}`, ""] : []),
+    "Thanks for your quote request. We received your configuration and will get back to you as soon as possible.",
     "",
-    ...items.flatMap((item) => [
-      `${item.title}: ${item.description}`,
-      `Path length: ${formatMeters(item.values.pricing.cutLengthM)}`,
-      "",
-    ]),
-    ...buildBatchSummaryLines(batchSummaries),
-    ...buildThicknessBasePriceRows(batchSummaries).map(([label, value]) => `${label}: ${value}`),
-    `Transport / handling: ${formatEuro(TRANSPORT_HANDLING_PRICE_EUR)}`,
-    `Grand total incl. transport / handling: ${formatEuro(summarizeOrder(batchSummaries).grandTotalEur)}`,
+    `Delivery: ${deliveryLabel}`,
+    ...(customerNote ? [`Your note: ${customerNote}`] : []),
+    "",
+    ...items.map((item) => `${item.title}: ${item.description}`),
     "",
     "Kind regards,",
     "Knal Amsterdam",
@@ -303,13 +301,12 @@ function buildConfirmationEmail({ customerName, customerNote, items }, batchSumm
     text: lines.join("\n"),
     html: buildEmailHtml({
       greeting: `Hi ${customerName},`,
-      lead: "Thanks for your quote request. We received the plank set below and will get back to you as soon as possible.",
+      lead: "Thanks for your quote request. We received your configuration and will get back to you as soon as possible.",
       items,
-      batchSummaries,
+      batchSummaries: [],
       details: [
+        ["Delivery", deliveryLabel],
         ["Note", customerNote || "-"],
-        ...buildThicknessBasePriceRows(batchSummaries),
-        ["Transport / handling", formatEuro(TRANSPORT_HANDLING_PRICE_EUR)],
       ],
       closing: ["Kind regards,", "Knal Amsterdam"],
     }),
@@ -363,7 +360,6 @@ function buildItemsTableHtml(items, batchSummaries) {
           <td style="border:1px solid #dbe4f0;padding:10px;font-weight:700;">${escapeHtml(item.title)}</td>
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(String(item.values.quantity))}</td>
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(item.values.materialLabel)}</td>
-          <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(item.values.materialVariantLabel)}</td>
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(String(item.values.lengthMm))}</td>
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(String(item.values.widthMm))}</td>
           <td style="border:1px solid #dbe4f0;padding:10px;">${escapeHtml(String(item.values.thicknessMm))}</td>
@@ -391,7 +387,6 @@ function buildItemsTableHtml(items, batchSummaries) {
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Plank</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Qty</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Material</th>
-          <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Variant</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Length (mm)</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Width (mm)</th>
           <th style="border:1px solid #dbe4f0;padding:10px;text-align:left;">Thickness (mm)</th>
@@ -416,16 +411,16 @@ function buildItemsTableHtml(items, batchSummaries) {
   `;
 }
 
-function buildQuoteCsv({ customerName, customerEmail, customerPhone, items }, batchSummaries) {
+function buildQuoteCsv({ customerName, customerEmail, customerPhone, customerDelivery, items }, batchSummaries) {
   const batchSummaryByThickness = new Map(batchSummaries.map((summary) => [summary.thicknessMm, summary]));
   const header = [
     "Customer Name",
     "Customer Email",
     "Customer Phone",
+    "Delivery",
     "Plank",
     "Quantity",
     "Material",
-    "Variant",
     "Length (mm)",
     "Width (mm)",
     "Thickness (mm)",
@@ -458,10 +453,10 @@ function buildQuoteCsv({ customerName, customerEmail, customerPhone, items }, ba
         customerName,
         customerEmail,
         customerPhone || "",
+        customerDelivery === "shipment" ? "Shipment on request" : "Collect",
         item.title,
         item.values.quantity,
         item.values.materialLabel,
-        item.values.materialVariantLabel,
         item.values.lengthMm,
         item.values.widthMm,
         item.values.thicknessMm,

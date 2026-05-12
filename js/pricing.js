@@ -1,7 +1,9 @@
-export const MAX_FINISHED_LENGTH_MM = 2400;
+export const MAX_FINISHED_LENGTH_MM = 2420;
 export const MAX_FINISHED_WIDTH_MM = 1200;
-export const STOCK_SHEET_LENGTH_MM = 2400;
-export const STOCK_SHEET_WIDTH_MM = 1200;
+export const MIN_FINISHED_LENGTH_MM = 20;
+export const MIN_FINISHED_WIDTH_MM = 20;
+export const STOCK_SHEET_LENGTH_MM = 2440;
+export const STOCK_SHEET_WIDTH_MM = 1220;
 export const SHEET_LAYOUT_MARGIN_MM = 10;
 export const SHEET_LAYOUT_GAP_MM = 10;
 export const MINIMUM_PLATE_PRICE_EUR = 25;
@@ -13,21 +15,79 @@ export const ROUNDED_CORNER_COMPLEXITY_PRICE_EUR = 2.5;
 
 export const MATERIALS = [
   {
-    key: "birch-multiplex",
-    label: "Birch multiplex",
+    key: "multiplex-b-bb",
+    label: "Multiplex B/BB",
     sheetLengthMm: STOCK_SHEET_LENGTH_MM,
     sheetWidthMm: STOCK_SHEET_WIDTH_MM,
     priceByThickness: {
-      6: 95.97,
-      9: 67.99,
-      12: 93.99,
-      15: 110.2,
-      18: 145,
-      21: 143.3,
-      24: 184.68,
-      27: 262.61,
-      30: 233.32,
-      40: 317.12,
+      3: 0,
+      5: 0,
+      8: 0,
+      12: 93.00,
+      15: 110.20,
+      18: 145.00,
+    },
+  },
+  {
+    key: "multiplex-cp-cp",
+    label: "Multiplex CP/CP",
+    sheetLengthMm: STOCK_SHEET_LENGTH_MM,
+    sheetWidthMm: STOCK_SHEET_WIDTH_MM,
+    priceByThickness: {
+      3: 0,
+      5: 0,
+      8: 0,
+      12: 0,
+      15: 0,
+      18: 0,
+    },
+  },
+  {
+    key: "okoume",
+    label: "Okoumé",
+    sheetLengthMm: STOCK_SHEET_LENGTH_MM,
+    sheetWidthMm: STOCK_SHEET_WIDTH_MM,
+    priceByThickness: {
+      6: 56.10,
+      8: 0,
+      10: 77.44,
+      12: 89.48,
+      15: 103.27,
+      18: 124.51,
+      22: 0,
+    },
+  },
+  {
+    key: "radiata",
+    label: "Radiata",
+    sheetLengthMm: STOCK_SHEET_LENGTH_MM,
+    sheetWidthMm: STOCK_SHEET_WIDTH_MM,
+    priceByThickness: {
+      6: 25.65,
+      9: 36.26,
+      12: 40.91,
+      15: 48.46,
+      18: 58.49,
+    },
+  },
+  {
+    key: "berken",
+    label: "Berken",
+    sheetLengthMm: STOCK_SHEET_LENGTH_MM,
+    sheetWidthMm: STOCK_SHEET_WIDTH_MM,
+    priceByThickness: {
+      9: 68.00,
+      12: 93.00,
+      18: 145.00,
+    },
+  },
+  {
+    key: "eucalyptus",
+    label: "Eucalyptus",
+    sheetLengthMm: STOCK_SHEET_LENGTH_MM,
+    sheetWidthMm: STOCK_SHEET_WIDTH_MM,
+    priceByThickness: {
+      18: 52.49,
     },
   },
 ];
@@ -39,6 +99,10 @@ export function getMaterialByKey(materialKey) {
 export function validatePlateConstraints({ materialKey, lengthMm, widthMm, thicknessMm }) {
   if (!(lengthMm > 0) || !(widthMm > 0) || !(thicknessMm > 0)) {
     throw new Error("Enter a valid length, width, and thickness to render the plywood plate.");
+  }
+
+  if (lengthMm < MIN_FINISHED_LENGTH_MM || widthMm < MIN_FINISHED_WIDTH_MM) {
+    throw new Error(`Minimum plate size is ${MIN_FINISHED_LENGTH_MM} × ${MIN_FINISHED_WIDTH_MM} mm.`);
   }
 
   if (lengthMm > MAX_FINISHED_LENGTH_MM) {

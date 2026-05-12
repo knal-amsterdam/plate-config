@@ -1,6 +1,6 @@
 import { exportSceneToGlb } from "./glb-exporter.js";
 import { createPlywoodPlateModel, disposePlywoodPlateModel } from "./model-factory.js";
-import { calculatePlatePricing, formatEuro, getMaterialByKey, validatePlateConstraints } from "./pricing.js";
+import { calculatePlatePricing, formatEuro, getMaterialByKey, validatePlateConstraints, MAX_FINISHED_LENGTH_MM, MAX_FINISHED_WIDTH_MM, MIN_FINISHED_LENGTH_MM, MIN_FINISHED_WIDTH_MM } from "./pricing.js";
 import { createPreviewController } from "./preview.js";
 import {
   closeOverviewModal,
@@ -18,6 +18,7 @@ import {
   setExpandedStep,
   syncChoiceCards,
   syncMaterialCards,
+  syncThicknessOptions,
   syncCornerRadiusField,
   syncHoleFields,
   updateMetrics,
@@ -47,9 +48,12 @@ for (const card of dom.materialCards) {
   card.addEventListener("click", () => handleMaterialCardSelect(card));
 }
 dom.lengthInput.addEventListener("input", handleInputChange);
+dom.lengthInput.addEventListener("blur", () => clampDimensionInput(dom.lengthInput, MIN_FINISHED_LENGTH_MM, MAX_FINISHED_LENGTH_MM));
 dom.widthInput.addEventListener("input", handleInputChange);
+dom.widthInput.addEventListener("blur", () => clampDimensionInput(dom.widthInput, MIN_FINISHED_WIDTH_MM, MAX_FINISHED_WIDTH_MM));
 dom.thicknessInput.addEventListener("change", handleInputChange);
 dom.quantityInput.addEventListener("input", handleInputChange);
+dom.edgeTreatmentInput.addEventListener("change", handleInputChange);
 dom.roundedCornersInput.addEventListener("change", handleRoundedCornersChange);
 for (const card of dom.cornerChoiceCards) {
   card.addEventListener("click", () => handleCornerChoiceSelect(card));
@@ -86,7 +90,8 @@ syncCornerRadiusField(dom);
 syncHoleFields(dom);
 syncChoiceCards(dom.cornerChoiceCards, dom.roundedCornersInput.checked);
 syncChoiceCards(dom.holeChoiceCards, dom.holeEnabledInput.checked);
-syncMaterialCards(dom, dom.materialVariantKeyInput.value);
+syncMaterialCards(dom, dom.materialInput.value);
+syncThicknessOptions(dom, getMaterialByKey(dom.materialInput.value));
 setExpandedStep(dom.accordionSteps, 1);
 renderQuoteItems(dom, quoteItems);
 renderOverviewTable(dom, quoteItems);
@@ -140,7 +145,10 @@ async function handleInputChange() {
 }
 
 async function handleMaterialCardSelect(card) {
-  syncMaterialCards(dom, card.dataset.variantKey || "");
+  const materialKey = card.dataset.materialKey || "";
+  syncMaterialCards(dom, materialKey);
+  const material = getMaterialByKey(materialKey);
+  syncThicknessOptions(dom, material);
   await renderFromInputs();
 }
 
@@ -203,10 +211,7 @@ async function renderFromInputs() {
 
     const glbBlob = await exportSceneToGlb(currentModel.scene);
     preview.update(glbBlob);
-    updateMetrics(dom, {
-      ...currentModel.dimensions,
-      materialVariantLabel: formValues.materialVariantLabel,
-    });
+    updateMetrics(dom, currentModel.dimensions);
 
     if (editingQuoteIndex !== null && quoteItems[editingQuoteIndex]) {
       const title = quoteItems[editingQuoteIndex].title || `Plank ${editingQuoteIndex + 1}`;
@@ -401,6 +406,28 @@ function handleOverviewTableClick(event) {
     return;
   }
 
+  const deleteButton = event.target.closest("[data-action='delete-plank']");
+
+  if (deleteButton) {
+    const row = deleteButton.closest("tr");
+    const index = Number(row?.dataset.index);
+    if (Number.isInteger(index) && quoteItems[index]) {
+      const title = quoteItems[index].title;
+      quoteItems.splice(index, 1);
+      if (editingQuoteIndex === index) {
+        editingQuoteIndex = null;
+        syncAddPlankButtonLabel();
+      } else if (editingQuoteIndex !== null && editingQuoteIndex > index) {
+        editingQuoteIndex--;
+      }
+      renderQuoteItems(dom, quoteItems);
+      renderOverviewTable(dom, quoteItems);
+      updateQuoteRequestState();
+      setStatus(dom.quoteStatusMessage, `${title} deleted.`, "success");
+    }
+    return;
+  }
+
   const button = event.target.closest("[data-action='load-plank']");
 
   if (!button) {
@@ -448,12 +475,11 @@ function saveOverviewRow(row) {
 function readCurrentFormValues() {
   return readFormValues({
     materialInput: dom.materialInput,
-    materialVariantKeyInput: dom.materialVariantKeyInput,
-    materialVariantLabelInput: dom.materialVariantLabelInput,
     lengthInput: dom.lengthInput,
     widthInput: dom.widthInput,
     thicknessInput: dom.thicknessInput,
     quantityInput: dom.quantityInput,
+    edgeTreatmentInput: dom.edgeTreatmentInput,
     roundedCornersInput: dom.roundedCornersInput,
     cornerRadiusInput: dom.cornerRadiusInput,
     holeEnabledInput: dom.holeEnabledInput,
@@ -477,13 +503,12 @@ function buildQuoteItem(values, title) {
     ? `Holes ${values.holeCountX}x${values.holeCountY}, first ${values.holeXmm}/${values.holeYmm} mm, diameter ${values.holeDiameterMm} mm`
     : "No holes";
   const cornerText = values.roundedCorners ? `Rounded corners ${values.cornerRadiusMm} mm` : "Square corners";
-  const materialText = values.materialVariantLabel
-    ? `${material.label} (${values.materialVariantLabel})`
-    : material.label;
+  const edgeText = values.edgeTreatment ? "Edge 3.2 mm" : "No edge treatment";
+  const materialText = material.label;
 
   return {
     title,
-    description: `Qty ${values.quantity}, ${materialText}, ${values.lengthMm} x ${values.widthMm} x ${values.thicknessMm} mm, ${cornerText}, ${holeText}`,
+    description: `Qty ${values.quantity}, ${materialText}, ${values.lengthMm} x ${values.widthMm} x ${values.thicknessMm} mm, ${edgeText}, ${cornerText}, ${holeText}`,
     priceLabel: pricing.formattedTotalPrice,
     values: {
       ...quoteValues,
@@ -495,14 +520,10 @@ function buildQuoteItem(values, title) {
 
 function readOverviewRowValues(row, currentItem) {
   const currentValues = currentItem.values;
-  const nextVariantKey = readRowFieldValue(row, "materialVariantKey") || currentValues.materialVariantKey;
-  const materialCard = dom.materialCards.find((card) => card.dataset.variantKey === nextVariantKey);
 
   return {
     ...currentValues,
-    materialKey: currentValues.materialKey || "birch-multiplex",
-    materialVariantKey: nextVariantKey,
-    materialVariantLabel: materialCard?.dataset.variantLabel || currentValues.materialVariantLabel,
+    materialKey: readRowFieldValue(row, "materialKey") || currentValues.materialKey || "multiplex-b-bb",
     quantity: Number(readRowFieldValue(row, "quantity") || currentValues.quantity),
     lengthMm: Number(readRowFieldValue(row, "lengthMm") || currentValues.lengthMm),
     widthMm: Number(readRowFieldValue(row, "widthMm") || currentValues.widthMm),
@@ -529,11 +550,13 @@ async function loadQuoteItemIntoForm(item, index) {
 function syncLoadedQuoteItemToForm(item) {
   const values = item.values;
   dom.materialInput.value = values.materialKey;
-  syncMaterialCards(dom, values.materialVariantKey);
+  syncMaterialCards(dom, values.materialKey);
+  syncThicknessOptions(dom, getMaterialByKey(values.materialKey));
   dom.lengthInput.value = String(values.lengthMm);
   dom.widthInput.value = String(values.widthMm);
   dom.thicknessInput.value = String(values.thicknessMm);
   dom.quantityInput.value = String(values.quantity);
+  dom.edgeTreatmentInput.checked = values.edgeTreatment !== false;
   dom.roundedCornersInput.checked = Boolean(values.roundedCorners);
   syncChoiceCards(dom.cornerChoiceCards, dom.roundedCornersInput.checked);
   dom.cornerRadiusInput.value = String(values.cornerRadiusMm);
@@ -558,6 +581,7 @@ function updateQuoteRequestState() {
     customerNameInput: dom.customerNameInput,
     customerEmailInput: dom.customerEmailInput,
     customerPhoneInput: dom.customerPhoneInput,
+    customerDeliveryInput: dom.customerDeliveryInput,
     customerNoteInput: dom.customerNoteInput,
   });
   const canSubmit = quoteItems.length > 0 && customerName.length > 0 && isValidEmail(customerEmail);
@@ -573,10 +597,11 @@ async function handleQuoteRequest() {
     dom.quoteRequestButton.disabled = true;
     dom.quoteRequestButton.setAttribute("aria-disabled", "true");
 
-    const { customerName, customerEmail, customerPhone, customerNote } = readContactValues({
+    const { customerName, customerEmail, customerPhone, customerDelivery, customerNote } = readContactValues({
       customerNameInput: dom.customerNameInput,
       customerEmailInput: dom.customerEmailInput,
       customerPhoneInput: dom.customerPhoneInput,
+      customerDeliveryInput: dom.customerDeliveryInput,
       customerNoteInput: dom.customerNoteInput,
     });
 
@@ -589,6 +614,7 @@ async function handleQuoteRequest() {
         customerName,
         customerEmail,
         customerPhone,
+        customerDelivery,
         customerNote,
         items: quoteItems,
       }),
@@ -618,6 +644,7 @@ function validateQuoteRequest() {
     customerNameInput: dom.customerNameInput,
     customerEmailInput: dom.customerEmailInput,
     customerPhoneInput: dom.customerPhoneInput,
+    customerDeliveryInput: dom.customerDeliveryInput,
     customerNoteInput: dom.customerNoteInput,
   });
 
@@ -644,6 +671,17 @@ function createPricingSummary(values) {
     formattedMaterialPrice: formatEuro(pricing.materialPriceEur),
     formattedMaterialPriceWithMarkup: formatEuro(pricing.materialPriceWithMarkupEur),
   };
+}
+
+function clampDimensionInput(input, min, max) {
+  const value = Number(input.value);
+  if (!value || value < min) {
+    input.value = String(min);
+    handleInputChange();
+  } else if (value > max) {
+    input.value = String(max);
+    handleInputChange();
+  }
 }
 
 function replaceModel(nextModel) {
